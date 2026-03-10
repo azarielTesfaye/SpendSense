@@ -89,16 +89,37 @@ WSGI_APPLICATION = 'core_api.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME'),
-        'USER': os.environ.get('DB_USER'),
-        'PASSWORD': os.environ.get('DB_PASSWORD'),
-        'HOST': os.environ.get('DB_HOST'),
-        'PORT': os.environ.get('DB_PORT'),
+USE_SQLITE = os.environ.get('USE_SQLITE', '').lower() in ('true', '1', 'yes')
+if USE_SQLITE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    from django.core.exceptions import ImproperlyConfigured
+
+    def _require_env(name: str) -> str:
+        value = os.environ.get(name)
+        if value is None or str(value).strip() == '':
+            raise ImproperlyConfigured(
+                f'Missing required environment variable {name}. '
+                'Set USE_SQLITE=true to run with SQLite for local development.'
+            )
+        return value
+
+    DB_HOST = _require_env('DB_HOST')
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': _require_env('DB_NAME'),
+            'USER': _require_env('DB_USER'),
+            'PASSWORD': _require_env('DB_PASSWORD'),
+            'HOST': DB_HOST,
+            'PORT': _require_env('DB_PORT'),
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
