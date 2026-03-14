@@ -3,6 +3,12 @@ from rest_framework import serializers
 from .models import Item, PriceSubmission
 
 
+class ItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Item
+        fields = ('id', 'name', 'category', 'unit')
+
+
 class PriceSubmissionSerializer(serializers.ModelSerializer):
     item_id = serializers.PrimaryKeyRelatedField(queryset=Item.objects.all(), source='item')
     outlier_warning = serializers.SerializerMethodField()
