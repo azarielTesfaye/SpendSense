@@ -16,6 +16,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    role = serializers.ChoiceField(choices=User.ROLE_CHOICES, required=False)
 
     class Meta:
         model = User
@@ -31,11 +32,15 @@ class RegisterSerializer(serializers.ModelSerializer):
             'income_bracket': {'required': False},
             'notification_preferences': {'required': False},
             'onboarding_completed': {'required': False},
-            'role': {'default': 'user', 'read_only': True},
+            'role': {'default': 'user'},
         }
 
     def create(self, validated_data):
         password = validated_data.pop('password')
+        role = (validated_data.get('role') or 'user').lower()
+        if role not in ('user', 'vendor'):
+            role = 'user'
+        validated_data['role'] = role
         user = User.objects.create_user(**validated_data, password=password)
         return user
 
