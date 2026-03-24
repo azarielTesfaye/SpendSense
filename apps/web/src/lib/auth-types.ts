@@ -38,6 +38,7 @@ export type RegisterPayload = {
   full_name: string;
   email: string;
   password: string;
+  role?: "user" | "vendor";
   phone?: string;
   city?: string;
   household_size?: number;

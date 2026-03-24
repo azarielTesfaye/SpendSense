@@ -53,55 +53,44 @@ export default function LoginPage() {
 	};
 
 	return (
-		<div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-border/50 bg-background shadow-xl">
-			<div className="grid min-h-155 md:grid-cols-[1fr_1.2fr]">
-				<section className="relative hidden bg-primary p-8 text-primary-foreground md:flex md:flex-col md:justify-between">
-					<div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.22),transparent_55%)]" />
-					<div className="relative z-10 space-y-4">
+		<div className="w-full max-w-6xl overflow-hidden rounded-2xl border border-border/50 bg-background shadow-xl">
+			<div className="grid md:grid-cols-[1fr_1.35fr]">
+				<section className="relative hidden min-h-135 flex-col justify-between bg-primary p-10 text-primary-foreground md:flex">
+					<div className="space-y-5">
 						<div className="inline-flex items-center gap-2 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-medium backdrop-blur">
 							<Wallet className="size-4" />
 							SpendSense Ethiopia
 						</div>
-						<h1 className="text-4xl font-bold leading-tight">Smart spending starts here.</h1>
-						<p className="max-w-xs text-sm text-primary-foreground/90">
-							Track costs, compare prices, and make better money decisions every day.
-						</p>
+						<div className="space-y-3">
+							<h1 className="text-4xl font-bold leading-tight">Smart spending starts here.</h1>
+							<p className="max-w-sm text-base text-primary-foreground/90">
+								Track costs, compare prices, and make better money decisions every day.
+							</p>
+						</div>
 					</div>
-					<p className="relative z-10 text-sm text-primary-foreground/85">Trusted by thousands of Ethiopian households.</p>
+					<p className="text-sm text-primary-foreground/85">Trusted by thousands of Ethiopian households.</p>
 				</section>
 
-				<section className="flex items-center justify-center bg-background px-5 py-8 sm:px-8">
+				<section className="flex items-center justify-center bg-background px-6 py-10 sm:px-10">
 					<div className="w-full max-w-md space-y-6">
 						<div className="space-y-2 text-center">
 							<h2 className="text-3xl font-bold tracking-tight">Welcome Back</h2>
-							<p className="text-sm text-muted-foreground">Sign in to continue to your SpendSense account.</p>
+							<p className="text-sm text-muted-foreground">Track your spending and shop smarter.</p>
 						</div>
 
-			{error && (
-				<AuthFeedback
-					title="Sign in failed"
-					message={error}
-					variant="destructive"
-				/>
-			)}
+						{error && <AuthFeedback title="Sign in failed" message={error} variant="destructive" />}
 
 						<Form {...form}>
-							<form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)} noValidate>
+							<form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)} noValidate>
 								<FormField
 									control={form.control}
 									name="email"
 									render={({ field }) => (
 										<FormItem>
-											<FormLabel>Email</FormLabel>
+											<FormLabel>Email address</FormLabel>
 											<FormControl>
 												<div className="relative">
-													<Input
-														id="email"
-														type="email"
-														autoComplete="email"
-														placeholder="example@email.com"
-														{...field}
-													/>
+													<Input id="email" type="email" autoComplete="email" placeholder="example@email.com" {...field} />
 													<Mail className="pointer-events-none absolute right-3 top-2.5 size-4 text-muted-foreground" />
 												</div>
 											</FormControl>
@@ -118,34 +107,28 @@ export default function LoginPage() {
 											<div className="flex items-center justify-between">
 												<FormLabel>Password</FormLabel>
 												<Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
-													Forgot password?
+													Forgot Password?
 												</Link>
 											</div>
 											<FormControl>
-												<Input
-													id="password"
-													type="password"
-													autoComplete="current-password"
-													placeholder="Enter your password"
-													{...field}
-												/>
+												<Input id="password" type="password" autoComplete="current-password" placeholder="Enter your password" {...field} />
 											</FormControl>
 											<FormMessage />
 										</FormItem>
 									)}
 								/>
 
-								<Button className="h-11 w-full gap-2 text-sm font-semibold" disabled={form.formState.isSubmitting} type="submit">
+								<Button className="h-12 w-full gap-2 text-base font-semibold" disabled={form.formState.isSubmitting} type="submit">
 									<LogIn className="size-4" />
-									{form.formState.isSubmitting ? "Signing in..." : "Sign in"}
+									{form.formState.isSubmitting ? "Signing in..." : "Sign In"}
 								</Button>
 							</form>
 						</Form>
 
 						<p className="text-center text-sm text-muted-foreground">
 							Don&apos;t have an account?{" "}
-							<Link href="/register" className="font-medium text-foreground underline underline-offset-4">
-								Create one
+							<Link href="/register" className="font-semibold text-primary hover:underline">
+								Create an account
 							</Link>
 						</p>
 					</div>
