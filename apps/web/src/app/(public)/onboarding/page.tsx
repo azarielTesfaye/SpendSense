@@ -1,6 +1,49 @@
+ "use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 
 export default function OnboardingPage() {
+  const router = useRouter();
+  const [city, setCity] = useState("Addis Ababa");
+  const [district, setDistrict] = useState("Bole");
+
+  const districtsByCity: Record<string, string[]> = {
+    "Addis Ababa": ["Bole", "Arada", "Kirkos", "Nifas Silk-Lafto", "Yeka", "Kolfe Keranio"],
+    "Dire Dawa": ["Kezira", "Sabian", "Gendekore"],
+    Adama: ["Bole", "Geda", "Dembela", "Lugo"],
+    Gondar: ["Azezo", "Arada", "Maraki"],
+    "Bahir Dar": ["Belay Zeleke", "Sefene Selam", "Shum Abo"],
+    Hawassa: ["Haik Dar", "Tabour", "Bahil Adarash"],
+  };
+
+  const availableDistricts = useMemo(() => districtsByCity[city] ?? [], [city]);
+
+  const handleCityChange = (nextCity: string) => {
+    setCity(nextCity);
+    setDistrict((districtsByCity[nextCity] ?? [])[0] ?? "");
+  };
+
+  const saveOnboarding = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        "spendsense_onboarding",
+        JSON.stringify({ city, district, completedStep: 1 }),
+      );
+    }
+  };
+
+  const handleNext = () => {
+    saveOnboarding();
+    router.push("/settings/alerts");
+  };
+
+  const handleSkip = () => {
+    saveOnboarding();
+    router.push("/dashboard");
+  };
+
   return (
     <div className="min-h-screen bg-[#f6f6f8] text-[#111318]">
       <header className="sticky top-0 z-50 border-b border-[#dbdfe6] bg-white/80 backdrop-blur-md">
@@ -45,13 +88,14 @@ export default function OnboardingPage() {
                   <span className="text-lg font-bold">City</span>
                 </div>
                 <div className="relative">
-                  <select className="h-12 w-full appearance-none rounded-lg border-none bg-[#f0f2f4] px-4 font-medium text-[#111318] focus:ring-2 focus:ring-[#135bec]">
-                    <option>Addis Ababa</option>
-                    <option>Dire Dawa</option>
-                    <option>Adama</option>
-                    <option>Gondar</option>
-                    <option>Bahir Dar</option>
-                    <option>Hawassa</option>
+                  <select
+                    value={city}
+                    onChange={(event) => handleCityChange(event.target.value)}
+                    className="h-12 w-full appearance-none rounded-lg border-none bg-[#f0f2f4] px-4 font-medium text-[#111318] focus:ring-2 focus:ring-[#135bec]"
+                  >
+                    {Object.keys(districtsByCity).map((cityOption) => (
+                      <option key={cityOption}>{cityOption}</option>
+                    ))}
                   </select>
                   <span className="pointer-events-none absolute right-3 top-3 text-[#616f89]">
                     ⌄
@@ -67,13 +111,14 @@ export default function OnboardingPage() {
                   <span className="text-lg font-bold">District (Sub-City)</span>
                 </div>
                 <div className="relative">
-                  <select className="h-12 w-full appearance-none rounded-lg border-none bg-[#f0f2f4] px-4 font-medium text-[#111318] focus:ring-2 focus:ring-[#135bec]">
-                    <option>Bole</option>
-                    <option>Arada</option>
-                    <option>Kirkos</option>
-                    <option>Nifas Silk-Lafto</option>
-                    <option>Yeka</option>
-                    <option>Kolfe Keranio</option>
+                  <select
+                    value={district}
+                    onChange={(event) => setDistrict(event.target.value)}
+                    className="h-12 w-full appearance-none rounded-lg border-none bg-[#f0f2f4] px-4 font-medium text-[#111318] focus:ring-2 focus:ring-[#135bec]"
+                  >
+                    {availableDistricts.map((districtOption) => (
+                      <option key={districtOption}>{districtOption}</option>
+                    ))}
                   </select>
                   <span className="pointer-events-none absolute right-3 top-3 text-[#616f89]">
                     ⌄
@@ -99,13 +144,16 @@ export default function OnboardingPage() {
           </div>
 
           <div className="flex flex-col gap-4 pt-8 md:flex-row">
-            <Link
-              href="/dashboard"
+            <button
+              onClick={handleNext}
               className="flex h-14 flex-1 items-center justify-center gap-2 rounded-xl bg-[#135bec] font-bold text-white shadow-sm transition-all hover:opacity-90"
             >
               Next: Preferences <span>→</span>
-            </Link>
-            <button className="h-14 flex-1 rounded-xl bg-[#e5e7eb] font-bold text-[#111318] transition-colors hover:bg-[#dbdfe6]">
+            </button>
+            <button
+              onClick={handleSkip}
+              className="h-14 flex-1 rounded-xl bg-[#e5e7eb] font-bold text-[#111318] transition-colors hover:bg-[#dbdfe6]"
+            >
               Skip for now
             </button>
           </div>
@@ -157,7 +205,7 @@ export default function OnboardingPage() {
             </Link>
           </div>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }
