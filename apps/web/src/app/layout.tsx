@@ -22,7 +22,7 @@ export default function RootLayout({
             </RealtimeProvider>
           </AuthProvider>
         </TooltipProvider>
-        <Toaster richColors />
+        <Toaster richColors theme="light" position="top-right" />
       </body>
     </html>
   );

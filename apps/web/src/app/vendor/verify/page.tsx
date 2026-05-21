@@ -85,6 +85,12 @@ export default async function VendorVerifyPage() {
                 <p className="text-slate-500 mb-8 text-lg leading-relaxed">
                   We couldn't verify your business details. Please update your profile with accurate information and resubmit your documents.
                 </p>
+                {status?.verification_rejection_reason && (
+                  <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4">
+                    <p className="mb-1 text-xs font-bold uppercase tracking-wider text-red-600">Rejection Reason</p>
+                    <p className="text-sm text-red-800">{status.verification_rejection_reason}</p>
+                  </div>
+                )}
                 <div className="mb-10">
                    <VerificationForm />
                 </div>

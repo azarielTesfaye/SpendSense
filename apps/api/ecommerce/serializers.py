@@ -25,6 +25,7 @@ class VendorPublicSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'shop_name', 'city', 'address', 'contact_phone',
             'latitude', 'longitude', 'is_verified', 'verification_status',
+            'verification_rejection_reason',
             'business_license', 'tin_number', 'rating_avg', 'rating_count', 'joined_at',
             'owner_name', 'owner_email',
         )

@@ -6,7 +6,7 @@ export async function getPendingVendors() {
   const raw = await apiClient<AdminVendorListResponse>({
     method: "GET",
     endpoint: "/api/ecommerce/admin/vendors/",
-    query: { status: "requested" },
+    query: { status: "pending" },
     next: { tags: ["admin-vendors"] },
   });
 

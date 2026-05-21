@@ -784,9 +784,9 @@ class AdminVendorRejectView(APIView):
         
         v.is_verified = False
         v.verification_status = 'rejected'
-        v.save(update_fields=['is_verified', 'verification_status'])
-        
         reason = request.data.get('reason', 'Provided documents were insufficient or invalid.')
+        v.verification_rejection_reason = reason
+        v.save(update_fields=['is_verified', 'verification_status', 'verification_rejection_reason'])
         
         Notification.objects.create(
             user=v.owner,
