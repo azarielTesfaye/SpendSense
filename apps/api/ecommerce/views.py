@@ -2,9 +2,10 @@ import math
 from decimal import Decimal
 
 from django.conf import settings
-from django.db.models import Avg, Q
+from django.db.models import Avg, Q, Sum, Count
 from django.utils import timezone
-from rest_framework import generics, status
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import generics, status, filters
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from rest_framework.generics import get_object_or_404
@@ -12,6 +13,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS
 from rest_framework.response import Response
 from rest_framework.views import APIView
 import logging
+
+from .pagination import StandardResultsSetPagination
 
 from core_api.permissions import IsAdminRole
 from market.models import VendorPrice
@@ -192,6 +195,10 @@ class RecommendationsView(APIView):
 
 class PurchaseListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['status', 'vendor__shop_name']
+    search_fields = ['reference', 'vendor__shop_name']
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -217,6 +224,41 @@ class PurchaseListCreateView(generics.ListCreateAPIView):
         ser.is_valid(raise_exception=True)
         tx = ser.save()
         return Response(TransactionSerializer(tx).data, status=status.HTTP_201_CREATED)
+
+
+class PurchaseKPISummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if getattr(self, 'swagger_fake_view', False) or not request.user.is_authenticated:
+            return Response({})
+            
+        qs = Transaction.objects.filter(user=request.user)
+        
+        total_revenue = qs.aggregate(total=Sum('amount'))['total'] or 0
+        average_order_value = qs.aggregate(avg=Avg('amount'))['avg'] or 0
+        pending_orders = qs.filter(status='pending').count()
+        
+        top_vendors = list(
+            qs.values('vendor__shop_name')
+            .annotate(amount=Sum('amount'), orders=Count('id'))
+            .order_by('-amount')[:2]
+        )
+        top_vendors_formatted = [
+            {
+                'name': v['vendor__shop_name'],
+                'amount': v['amount'],
+                'orders': v['orders']
+            }
+            for v in top_vendors
+        ]
+        
+        return Response({
+            'total_revenue': total_revenue,
+            'pending_orders': pending_orders,
+            'average_order_value': average_order_value,
+            'top_vendors': top_vendors_formatted
+        })
 
 
 class PurchaseDetailView(generics.RetrieveAPIView):

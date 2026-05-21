@@ -119,10 +119,12 @@ class VendorPriceSerializer(serializers.ModelSerializer):
 
 
 class TransactionSerializer(serializers.ModelSerializer):
+    vendor_name = serializers.CharField(source='vendor.shop_name', read_only=True)
+
     class Meta:
         model = Transaction
         fields = (
-            'id', 'vendor', 'vendor_price', 'quantity', 'amount', 'currency',
+            'id', 'vendor', 'vendor_name', 'vendor_price', 'quantity', 'amount', 'currency',
             'status', 'reference', 'payment_method', 'payment_reference',
             'payment_url', 'paid_at', 'created_at', 'updated_at',
         )

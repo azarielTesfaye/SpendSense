@@ -56,6 +56,7 @@ export interface Recommendation {
 export interface Purchase {
   id: string;
   vendor: string;
+  vendor_name: string;
   vendor_price: number | null;
   quantity: number;
   amount: number | string;
@@ -68,6 +69,23 @@ export interface Purchase {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PurchaseKpiSummary {
+  total_revenue: number;
+  average_order_value: number;
+  pending_orders: number;
+  top_vendors: { name: string; amount: number; orders: number }[];
+}
+
+export interface PaginatedResponse<T> {
+  pagination: {
+    total_records: number;
+    total_pages: number;
+    page_size: number;
+    current_page: number;
+  };
+  results: T[];
 }
 
 export interface Review {

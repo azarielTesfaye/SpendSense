@@ -8,6 +8,8 @@ import {
   normalizeCart,
   type Cart,
   type Purchase,
+  type PaginatedResponse,
+  type PurchaseKpiSummary,
   type Recommendation,
   type Review,
   type Vendor,
@@ -527,11 +529,17 @@ export async function createPayment(input: PaymentSchema): Promise<Purchase> {
   return getOrderById(String(purchase_id));
 }
 
-export async function getOrders(): Promise<Purchase[]> {
+export async function getOrders(params?: { search?: string, page?: number, status?: string }): Promise<PaginatedResponse<Purchase>> {
   try {
-    const response = await apiClient<Purchase[]>({
+    const query: Record<string, string | number> = {};
+    if (params?.search) query.search = params.search;
+    if (params?.page) query.page = params.page;
+    if (params?.status && params.status !== "all") query.status = params.status;
+
+    const response = await apiClient<PaginatedResponse<Purchase>>({
       method: "GET",
       endpoint: "/api/ecommerce/purchases/",
+      query,
       cache: "force-cache",
       next: {
         revalidate: 60,
@@ -539,8 +547,40 @@ export async function getOrders(): Promise<Purchase[]> {
       },
     });
 
-    return normalizeCollection(response);
+    return response;
   } catch (error) {
+    throw toEcommerceApiError(error);
+  }
+}
+
+export async function getPurchaseKpiSummary(): Promise<PurchaseKpiSummary> {
+  try {
+    const response = await apiClient<PurchaseKpiSummary>({
+      method: "GET",
+      endpoint: "/api/ecommerce/purchases/kpi-summary/",
+      cache: "force-cache",
+      next: {
+        revalidate: 60,
+        tags: [CACHE_TAGS.purchases, 'purchases-kpi'],
+      },
+    });
+    return response;
+  } catch (error) {
+    // If the backend route isn't available yet return safe defaults so the
+    // Orders page can render instead of surfacing the Django 404 HTML.
+    try {
+      if (error instanceof ApiError && (error as any).status === 404) {
+        return {
+          total_revenue: 0,
+          average_order_value: 0,
+          pending_orders: 0,
+          top_vendors: [],
+        } as PurchaseKpiSummary;
+      }
+    } catch (_) {
+      // fall through to throwing a normalized error
+    }
+
     throw toEcommerceApiError(error);
   }
 }

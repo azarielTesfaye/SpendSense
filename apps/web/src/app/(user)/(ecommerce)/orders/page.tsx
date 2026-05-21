@@ -1,12 +1,9 @@
-"use client";
-
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   ArrowUpIcon,
-  ChevronLeft,
-  ChevronRight,
   Download,
   Eye,
+  ChevronRight,
   Filter,
   Lightbulb,
   Plus,
@@ -14,7 +11,7 @@ import {
   Verified,
 } from "lucide-react";
 
-import { getOrders } from "@/actions/ecommerce";
+import { getOrders, getPurchaseKpiSummary } from "@/actions/ecommerce";
 import type { Purchase } from "@/lib/ecommerce-types";
 import { Button } from "@repo/ui/components/button";
 import { Badge } from "@repo/ui/components/badge";
@@ -28,6 +25,7 @@ import {
 } from "@repo/ui/components/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/card";
 import { Progress } from "@repo/ui/components/progress";
+import { OrderSearch, OrderPagination } from "./OrderControls";
 
 function parseAmount(amount: string | number) {
   if (typeof amount === "number") {
@@ -80,71 +78,35 @@ function getStatusLabel(status: Purchase["status"]) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-export default function OrderHistoryPage() {
-  const [orders, setOrders] = useState<Purchase[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default async function OrderHistoryPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  const sp = await searchParams;
+  const page = Number(sp.page) || 1;
+  const search = typeof sp.search === "string" ? sp.search : "";
 
-  useEffect(() => {
-    let active = true;
+  let orders: Purchase[] = [];
+  let pagination = { current_page: 1, total_pages: 1, total_records: 0 };
+  let kpi = { total_revenue: 0, pending_orders: 0, average_order_value: 0, top_vendors: [] as any[] };
+  let error = null;
 
-    async function loadOrders() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await getOrders();
-        if (!active) {
-          return;
-        }
-
-        setOrders(response);
-      } catch {
-        if (active) {
-          setError("Unable to load order history.");
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
+  try {
+    const [ordersRes, kpiRes] = await Promise.all([
+      getOrders({ page, search }),
+      getPurchaseKpiSummary()
+    ]);
+    orders = ordersRes.results || [];
+    if (ordersRes.pagination) {
+      pagination = ordersRes.pagination;
     }
-
-    void loadOrders();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  if (loading) {
-    return <div className="p-4 md:p-8 max-w-7xl mx-auto text-sm text-muted-foreground">Loading order history...</div>;
+    kpi = kpiRes || kpi;
+  } catch (err: any) {
+    error = err.message || "Failed to load order history";
   }
 
   if (error) {
     return <div className="p-4 md:p-8 max-w-7xl mx-auto text-sm text-destructive">{error}</div>;
   }
 
-  const totalRevenue = orders.reduce((sum, order) => sum + parseAmount(order.amount), 0);
-  const pendingOrders = orders.filter((order) => order.status === "pending").length;
-  const averageOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
-
-  const topVendors = Object.values(
-    orders.reduce<Record<string, { name: string; orders: number; amount: number }>>((accumulator, order) => {
-      const current = accumulator[order.vendor] ?? {
-        name: order.vendor,
-        orders: 0,
-        amount: 0,
-      };
-
-      current.orders += 1;
-      current.amount += parseAmount(order.amount);
-      accumulator[order.vendor] = current;
-      return accumulator;
-    }, {}),
-  )
-    .sort((left, right) => right.amount - left.amount)
-    .slice(0, 2);
+  const { total_revenue: totalRevenue, pending_orders: pendingOrders, average_order_value: averageOrderValue, top_vendors: topVendors } = kpi;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-10">
@@ -159,9 +121,7 @@ export default function OrderHistoryPage() {
           <p className="text-muted-foreground mt-1">Manage and track your procurement across all vendors.</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="gap-2">
-            <Filter size={18} /> Filter
-          </Button>
+          <OrderSearch />
           <Button variant="outline" className="gap-2">
             <Download size={18} /> Export
           </Button>
@@ -212,19 +172,17 @@ export default function OrderHistoryPage() {
           <div className="flex items-center gap-4">
             <span className="text-sm font-bold">Recent Transactions</span>
             <div className="h-4 w-px bg-border" />
-            <span className="text-xs font-medium text-muted-foreground">Showing {orders.length} records</span>
+            <span className="text-xs font-medium text-muted-foreground">Showing {pagination.total_records} records</span>
           </div>
-          <div className="flex gap-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8"><ChevronLeft size={16} /></Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8"><ChevronRight size={16} /></Button>
-          </div>
+          <OrderPagination currentPage={pagination.current_page} totalPages={pagination.total_pages} />
         </div>
         <Table>
           <TableHeader className="bg-muted/10 text-xs font-bold uppercase tracking-widest">
             <TableRow>
               <TableHead className="px-6">Order ID</TableHead>
               <TableHead className="px-6">Date</TableHead>
-              <TableHead className="px-6">Vendor</TableHead>
+              <TableHead className="px-6">Vendor Name</TableHead>
+              <TableHead className="px-6 text-center">Items</TableHead>
               <TableHead className="px-6 text-right">Amount</TableHead>
               <TableHead className="px-6">Status</TableHead>
               <TableHead className="px-6 text-center">Actions</TableHead>
@@ -233,16 +191,17 @@ export default function OrderHistoryPage() {
           <TableBody>
             {orders.map((order) => (
               <TableRow key={order.id} className="group hover:bg-muted/30 transition-colors">
-                <TableCell className="px-6 font-mono text-sm text-muted-foreground">{order.id}</TableCell>
+                <TableCell className="px-6 font-mono text-sm text-muted-foreground">{order.reference || order.id.slice(0, 8)}</TableCell>
                 <TableCell className="px-6 text-sm text-muted-foreground">{formatDate(order.created_at)}</TableCell>
                 <TableCell className="px-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                      {order.vendor.charAt(0).toUpperCase()}
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold">
+                      {(order.vendor_name || 'V').charAt(0).toUpperCase()}
                     </div>
-                    <span className="text-sm font-semibold">{order.vendor}</span>
+                    <span className="text-sm font-semibold">{order.vendor_name || 'Unknown Vendor'}</span>
                   </div>
                 </TableCell>
+                <TableCell className="px-6 text-center font-medium text-muted-foreground">{order.quantity}</TableCell>
                 <TableCell className="px-6 text-right font-bold">{formatCurrency(parseAmount(order.amount))}</TableCell>
                 <TableCell className="px-6">
                   <Badge className="rounded-full px-3 py-0.5 text-[10px] font-bold" variant={getStatusVariant(order.status)}>
