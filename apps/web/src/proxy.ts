@@ -256,8 +256,8 @@ export async function proxy(request: NextRequest) {
   }
   const effectiveRole = role ?? (hasSessionCookie ? "user" : null);
   const matchedProtectedRoute = findProtectedRoute(pathname);
-  console.log(
-    `proxy: pathname=${pathname}, search=${search}, hasSessionCookie=${hasSessionCookie}, effectiveRole=${effectiveRole}, matchedProtectedRoute=${matchedProtectedRoute?.prefix}`)
+  // console.log(
+  //   `proxy: pathname=${pathname}, search=${search}, hasSessionCookie=${hasSessionCookie}, effectiveRole=${effectiveRole}, matchedProtectedRoute=${matchedProtectedRoute?.prefix}`)
 
   let response = NextResponse.next();
 

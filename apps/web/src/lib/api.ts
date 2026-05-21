@@ -151,6 +151,9 @@ export async function apiClient<T>(config: ApiClientConfig): Promise<T> {
     }
 
     const message = getErrorMessage(parsedError, response.status, contentType);
+    console.log({contentType})
+    console.log("Prepared failed url:", url, "Method:", method);
+
     throw new ApiError(message, response.status, parsedError);
   }
 

@@ -5,6 +5,7 @@ import { apiClient } from "@/lib/api";
 interface VendorStatus {
   is_verified: boolean;
   verification_status: 'unrequested' | 'requested' | 'pending' | 'verified' | 'rejected';
+  shop_name?: string;
 }
 
 export async function getVerificationStatus() {

@@ -7,7 +7,7 @@ import {
   CheckCircle2, PiggyBank, TrendingUp, Package, Tag, Loader2,
   XCircle, RefreshCw, X,
 } from "lucide-react";
-import { addToCart, bulkCheckout } from "@/actions/ecommerce";
+import { addToCart, bulkCheckout, removeBulkFromCart } from "@/actions/ecommerce";
 import type { CartItem } from "@/lib/ecommerce-types";
 import type { BudgetRecord, BudgetSummary, BudgetSummaryCategory } from "@/types/finance";
 import { Button } from "@repo/ui/components/button";
@@ -181,7 +181,7 @@ export function CartClient({ initialItems, budget, summary, initialError = null 
 
         if (checkoutUrl) {
           // Persist which listings / references are pending so the callback
-          // page can reconcile and clear them from the cart
+          // page can reconcile and clear them from the cart after confirmation
           try {
             sessionStorage.setItem(
               "pending_checkout",
@@ -190,13 +190,20 @@ export function CartClient({ initialItems, budget, summary, initialError = null 
                 references: response.map((purchase) => purchase.reference),
               }),
             );
-            sessionStorage.removeItem("pending_checkout_listings");
+            console.log('[Cart] pending_checkout saved to sessionStorage:', sessionStorage.getItem('pending_checkout'));
           } catch (storageErr) {
-            // sessionStorage may be blocked (private browsing, etc.) — non-fatal
-            console.warn("[Cart] Could not save pending_checkout to sessionStorage:", storageErr);
+            console.warn('[Cart] Could not save pending_checkout to sessionStorage:', storageErr);
           }
 
-          console.log("[Cart] Redirecting to Chapa payment URL:", checkoutUrl);
+          // Attempt to remove items from cart (best-effort) before redirecting
+          try {
+            console.log('[Cart] Removing items from cart before redirect:', Array.from(selectedListingIds));
+            await removeBulkFromCart(Array.from(selectedListingIds));
+          } catch (rmErr) {
+            console.warn('[Cart] removeBulkFromCart failed:', rmErr);
+          }
+
+          console.log('[Cart] Redirecting to Chapa payment URL:', checkoutUrl);
           window.location.href = checkoutUrl;
         } else {
           // The backend accepted the request but returned no payment URL —

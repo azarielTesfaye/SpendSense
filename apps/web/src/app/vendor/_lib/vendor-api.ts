@@ -14,6 +14,7 @@ export interface VendorProfile {
   phone?: string;
   city?: string;
   role?: string;
+  onboarding_completed?: boolean;
   household_size?: number;
   income_bracket?: string;
   avatar?: string;
@@ -24,6 +25,7 @@ export interface VendorProfile {
   shop_name?: string;
   address?: string;
   contact_phone?: string;
+  vendor_info?: Record<string, unknown> | null;
 }
 
 export interface VendorProduct {

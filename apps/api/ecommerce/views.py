@@ -11,6 +11,7 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import logging
 
 from core_api.permissions import IsAdminRole
 from market.models import VendorPrice
@@ -261,10 +262,106 @@ class PaymentWebhookView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        secret = request.headers.get('X-WEBHOOK-SECRET', '')
+        logger = logging.getLogger(__name__)
+        # Log incoming webhook for diagnostics (trim long bodies)
+        try:
+            raw_body = request.body.decode('utf-8')
+        except Exception:
+            raw_body = str(request.body)
+        logger.info('Payment webhook received: headers=%s body=%s', dict(request.headers), raw_body[:4000])
+
+        # Accept secret from several possible header names, payload keys, or query param
+        header_names = [
+            'X-WEBHOOK-SECRET', 'X-WEBHOOK-TOKEN', 'X-CHAPA-SIGNATURE', 'X-CHAPA-SECRET', 'X-SIGNATURE',
+            'X-HOOK-SECRET', 'X-HOOK-TOKEN', 'Authorization',
+        ]
+
+        secret = ''
+        for hn in header_names:
+            val = request.headers.get(hn)
+            if val:
+                # Support 'Authorization: Bearer <token>'
+                if hn.lower() == 'authorization' and val.lower().startswith('bearer '):
+                    secret = val.split(None, 1)[1].strip()
+                else:
+                    secret = val.strip()
+                break
+
+        # fallback to payload or query param
+        if not secret:
+            secret = (
+                request.data.get('secret', '')
+                or request.data.get('webhook_secret', '')
+                or request.query_params.get('secret', '')
+            )
+
         expected = getattr(settings, 'PAYMENT_WEBHOOK_SECRET', '')
-        if expected and secret != expected:
+
+        # If an expected secret is configured, verify either a direct token match
+        # OR an HMAC signature header commonly used by gateway providers (Chapa).
+        def _is_hmac_match(expected_key: str, header_val: str, body_bytes: bytes) -> bool:
+            try:
+                import hmac, hashlib, base64
+
+                # compute raw HMAC digest
+                hm = hmac.new(expected_key.encode('utf-8'), body_bytes, hashlib.sha256)
+                hex_digest = hm.hexdigest()
+                b64_digest = base64.b64encode(hm.digest()).decode('utf-8')
+
+                # common header formats: hex, base64, or prefixed 'sha256='
+                candidates = {hex_digest, b64_digest, f"sha256={hex_digest}", f"sha256={b64_digest}"}
+                # some gateways URL-encode or wrap values; compare lower-cased trimmed
+                hv = header_val.strip()
+                if hv in candidates:
+                    return True
+                if hv.lower().startswith('sha256=') and hv.split('=', 1)[1] in candidates:
+                    return True
+                return False
+            except Exception:
+                return False
+
+        signature_headers = [
+            'Chapa-Signature', 'X-Chapa-Signature', 'Signature', 'X-Signature',
+            'X-Hook-Signature', 'X-Hook-Secret', 'X-Webhook-Signature',
+        ]
+
+        verified = False
+        # Check if any signature header or secret is present
+        signature_header_present = any(request.headers.get(sh) for sh in signature_headers) or bool(secret)
+        
+        if expected and signature_header_present:
+            # direct token match
+            if secret and secret == expected:
+                verified = True
+
+            # check signature headers
+            if not verified:
+                body_bytes = request.body if hasattr(request, 'body') else raw_body.encode('utf-8')
+                for sh in signature_headers:
+                    hv = request.headers.get(sh)
+                    if hv:
+                        if _is_hmac_match(expected, hv, body_bytes):
+                            verified = True
+                            break
+
+        if expected and signature_header_present and not verified:
+            # Log header names present to help identify how the gateway sends the secret
+            try:
+                logger.warning(
+                    'Invalid webhook signature: expected present but none matched. headers=%s payload_keys=%s',
+                    list(request.headers.keys()),
+                    list(request.data.keys()) if isinstance(request.data, dict) else [],
+                )
+            except Exception:
+                pass
             return Response({'detail': 'Invalid webhook signature.'}, status=status.HTTP_403_FORBIDDEN)
+        elif expected and not signature_header_present:
+            # No signature provided, but secret is configured
+            logger.warning(
+                'Webhook received without signature header, but PAYMENT_WEBHOOK_SECRET is configured. '
+                'This is allowed but not recommended for security. headers=%s',
+                list(request.headers.keys()),
+            )
         data = request.data.get('data', request.data)
         reference = (
             request.data.get('reference')
@@ -302,6 +399,15 @@ class PaymentWebhookView(APIView):
                 Q(reference__in=individual_refs) | Q(payment_reference=reference)
             )
         )
+        try:
+            logging.getLogger(__name__).info(
+                'Webhook matched transactions: reference=%s individual_refs=%s matched_ids=%s',
+                reference,
+                individual_refs,
+                [str(t.id) for t in transactions],
+            )
+        except Exception:
+            pass
         if not transactions:
             return Response({'detail': 'Transaction not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -314,21 +420,30 @@ class PaymentWebhookView(APIView):
                     tx.status = 'paid'
                     tx.paid_at = timezone.now()
 
-                    # Auto-record as Expense on successful payment
+                    # Try to find an existing pending Expense created at checkout
                     try:
-                        item_name = ''
-                        if tx.vendor_price and hasattr(tx.vendor_price, 'item'):
-                            item_name = tx.vendor_price.item.name if tx.vendor_price.item else ''
-                        Expense.objects.create(
+                        existing = Expense.objects.filter(
                             user=tx.user,
-                            category='Shopping',
-                            item=tx.vendor_price.item if tx.vendor_price else None,
-                            amount=tx.amount,
-                            vendor=tx.vendor,
-                            payment_method=tx.payment_method,
-                            date=datetime.date.today(),
-                            note=f'Auto-recorded from Chapa payment. Order ref: {tx.reference}',
-                        )
+                            note__contains=str(tx.reference),
+                        ).first()
+                        if existing:
+                            existing.amount = tx.amount
+                            existing.vendor = tx.vendor
+                            existing.payment_method = tx.payment_method
+                            existing.date = datetime.date.today()
+                            existing.note = f'Auto-recorded from Chapa payment. Order ref: {tx.reference}'
+                            existing.save()
+                        else:
+                            Expense.objects.create(
+                                user=tx.user,
+                                category='Shopping',
+                                item=tx.vendor_price.item if tx.vendor_price else None,
+                                amount=tx.amount,
+                                vendor=tx.vendor,
+                                payment_method=tx.payment_method,
+                                date=datetime.date.today(),
+                                note=f'Auto-recorded from Chapa payment. Order ref: {tx.reference}',
+                            )
                     except Exception:
                         pass  # Expense recording is best-effort; don't fail the webhook
 
@@ -336,6 +451,16 @@ class PaymentWebhookView(APIView):
                     tx.status = result
 
                 tx.payment_reference = gateway_ref or tx.payment_reference
+                try:
+                    logging.getLogger(__name__).info(
+                        'Updating Transaction from webhook: tx_id=%s ref=%s gateway_ref=%s result=%s',
+                        tx.id,
+                        tx.reference,
+                        gateway_ref,
+                        result,
+                    )
+                except Exception:
+                    pass
                 tx.webhook_payload = request.data
                 tx.save(update_fields=[
                     'status', 'paid_at', 'payment_reference', 'webhook_payload', 'updated_at'
@@ -349,6 +474,189 @@ class PaymentWebhookView(APIView):
                 AuditLog.objects.create(
                     actor=None,
                     action='payment_webhook',
+                    resource='transaction',
+                    resource_id=str(tx.id),
+                    detail={'status': tx.status, 'reference': tx.reference},
+                )
+
+        return Response(
+            {'detail': 'Webhook processed.', 'status': transactions[0].status, 'count': len(transactions)},
+            status=status.HTTP_200_OK,
+        )
+
+    def get(self, request):
+        """Support GET requests (some gateways or callbacks use query params).
+        This mirrors the POST handling but reads from query params.
+        """
+        logger = logging.getLogger(__name__)
+        logger.info('Payment webhook GET received: headers=%s query=%s', dict(request.headers), dict(request.query_params))
+
+        # Reuse similar signature verification as POST but reading from query params
+        header_names = [
+            'X-WEBHOOK-SECRET', 'X-WEBHOOK-TOKEN', 'X-CHAPA-SIGNATURE', 'X-CHAPA-SECRET', 'X-SIGNATURE',
+            'X-HOOK-SECRET', 'X-HOOK-TOKEN', 'Authorization',
+        ]
+
+        secret = ''
+        for hn in header_names:
+            val = request.headers.get(hn)
+            if val:
+                if hn.lower() == 'authorization' and val.lower().startswith('bearer '):
+                    secret = val.split(None, 1)[1].strip()
+                else:
+                    secret = val.strip()
+                break
+
+        if not secret:
+            secret = (request.query_params.get('secret', '') or request.query_params.get('webhook_secret', ''))
+
+        expected = getattr(settings, 'PAYMENT_WEBHOOK_SECRET', '')
+        verified = False
+        signature_headers = [
+            'Chapa-Signature', 'X-Chapa-Signature', 'Signature', 'X-Signature',
+            'X-Hook-Signature', 'X-Hook-Secret', 'X-Webhook-Signature',
+        ]
+        
+        # Check if any signature header or secret is present
+        signature_header_present = any(request.headers.get(sh) for sh in signature_headers) or bool(secret)
+        
+        if expected and signature_header_present:
+            if secret and secret == expected:
+                verified = True
+            if not verified:
+                # attempt HMAC verify using query string bytes
+                import hmac, hashlib, base64
+                body_bytes = request.get_raw_uri().encode('utf-8') if hasattr(request, 'get_raw_uri') else str(request.query_params).encode('utf-8')
+                for sh in signature_headers:
+                    hv = request.headers.get(sh)
+                    if not hv:
+                        continue
+                    try:
+                        hm = hmac.new(expected.encode('utf-8'), body_bytes, hashlib.sha256)
+                        hex_digest = hm.hexdigest()
+                        b64_digest = base64.b64encode(hm.digest()).decode('utf-8')
+                        if hv.strip() in {hex_digest, b64_digest, f'sha256={hex_digest}', f'sha256={b64_digest}'}:
+                            verified = True
+                            break
+                    except Exception:
+                        continue
+
+        if expected and signature_header_present and not verified:
+            logger.warning('Invalid webhook signature on GET. headers=%s query_keys=%s', list(request.headers.keys()), list(request.query_params.keys()))
+            return Response({'detail': 'Invalid webhook signature.'}, status=status.HTTP_403_FORBIDDEN)
+        elif expected and not signature_header_present:
+            logger.warning('Webhook GET received without signature header, but PAYMENT_WEBHOOK_SECRET is configured. headers=%s', list(request.headers.keys()))
+
+        data = dict(request.query_params)
+        reference = (
+            request.query_params.get('reference')
+            or request.query_params.get('tx_ref')
+            or request.query_params.get('trx_ref')
+            or data.get('reference')
+            or data.get('tx_ref')
+            or data.get('trx_ref')
+        )
+        result = str(
+            request.query_params.get('status')
+            or data.get('status')
+            or ''
+        ).lower()
+        gateway_ref = (
+            request.query_params.get('gateway_reference')
+            or request.query_params.get('chapa_reference')
+            or request.query_params.get('ref_id')
+            or data.get('gateway_reference')
+            or data.get('chapa_reference')
+            or data.get('reference')
+            or data.get('ref_id')
+            or ''
+        )
+
+        if not reference:
+            return Response({'detail': 'reference is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        individual_refs = [r for r in reference.split('-') if len(r) == 32]
+        if not individual_refs:
+            individual_refs = [reference]
+
+        transactions = list(
+            Transaction.objects.filter(
+                Q(reference__in=individual_refs) | Q(payment_reference=reference)
+            )
+        )
+        try:
+            logging.getLogger(__name__).info(
+                'Webhook(GET) matched transactions: reference=%s individual_refs=%s matched_ids=%s',
+                reference,
+                individual_refs,
+                [str(t.id) for t in transactions],
+            )
+        except Exception:
+            pass
+
+        if not transactions:
+            return Response({'detail': 'Transaction not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        from finance.models import Expense
+        import datetime
+
+        with db_transaction.atomic():
+            for tx in transactions:
+                if result in ('success', 'paid'):
+                    tx.status = 'paid'
+                    tx.paid_at = timezone.now()
+                    try:
+                        existing = Expense.objects.filter(
+                            user=tx.user,
+                            note__contains=str(tx.reference),
+                        ).first()
+                        if existing:
+                            existing.amount = tx.amount
+                            existing.vendor = tx.vendor
+                            existing.payment_method = tx.payment_method
+                            existing.date = datetime.date.today()
+                            existing.note = f'Auto-recorded from Chapa payment. Order ref: {tx.reference}'
+                            existing.save()
+                        else:
+                            Expense.objects.create(
+                                user=tx.user,
+                                category='Shopping',
+                                item=tx.vendor_price.item if tx.vendor_price else None,
+                                amount=tx.amount,
+                                vendor=tx.vendor,
+                                payment_method=tx.payment_method,
+                                date=datetime.date.today(),
+                                note=f'Auto-recorded from Chapa payment. Order ref: {tx.reference}',
+                            )
+                    except Exception:
+                        pass
+                elif result in ('failed', 'cancelled'):
+                    tx.status = result
+
+                tx.payment_reference = gateway_ref or tx.payment_reference
+                try:
+                    logging.getLogger(__name__).info(
+                        'Updating Transaction from webhook(GET): tx_id=%s ref=%s gateway_ref=%s result=%s',
+                        tx.id,
+                        tx.reference,
+                        gateway_ref,
+                        result,
+                    )
+                except Exception:
+                    pass
+                tx.webhook_payload = dict(request.query_params)
+                tx.save(update_fields=[
+                    'status', 'paid_at', 'payment_reference', 'webhook_payload', 'updated_at'
+                ])
+
+                Notification.objects.create(
+                    user=tx.user,
+                    type='payment_confirmation',
+                    message=f'Payment update for order {tx.reference}: {tx.status}.',
+                )
+                AuditLog.objects.create(
+                    actor=None,
+                    action='payment_webhook_get',
                     resource='transaction',
                     resource_id=str(tx.id),
                     detail={'status': tx.status, 'reference': tx.reference},

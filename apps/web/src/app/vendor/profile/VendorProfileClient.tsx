@@ -49,8 +49,9 @@ export default function VendorProfileClient({ initialProfile }: { initialProfile
         // Persist vendor_id if we got one in vendor_info
         const vendorId = result.data.vendor_info?.id || result.data.vendor_info?.vendor_id;
         if (vendorId) {
-          localStorage.setItem("spendsense_vendor_id", vendorId);
-          setVendorId(vendorId);
+          const vendorIdStr = String(vendorId);
+          localStorage.setItem("spendsense_vendor_id", vendorIdStr);
+          setVendorId(vendorIdStr);
         }
         
         setMessage("Profile and business details updated successfully.");

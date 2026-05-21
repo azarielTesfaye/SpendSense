@@ -14,6 +14,8 @@ urlpatterns = [
     path('purchases/<uuid:pk>/', views.PurchaseDetailView.as_view(), name='purchase-detail'),
     path('purchases/<uuid:pk>/status/', views.PurchaseStatusUpdateView.as_view(), name='purchase-status'),
     path('purchases/', views.PurchaseListCreateView.as_view(), name='purchase-list'),
+    # Accept webhook POSTs both with and without trailing slash to avoid APPEND_SLASH POST redirect errors
+    path('webhooks/payment', views.PaymentWebhookView.as_view(), name='payment-webhook-no-slash'),
     path('webhooks/payment/', views.PaymentWebhookView.as_view(), name='payment-webhook'),
     path('admin/vendors/<uuid:pk>/verify/', views.AdminVendorVerifyView.as_view(), name='admin-vendor-verify'),
     path('admin/vendors/<uuid:pk>/reject/', views.AdminVendorRejectView.as_view(), name='admin-vendor-reject'),
