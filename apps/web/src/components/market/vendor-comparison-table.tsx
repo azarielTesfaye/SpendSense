@@ -1,28 +1,8 @@
-import { useEffect, useState } from "react";
-import { Star, MapPin, ExternalLink, Loader2 } from "lucide-react";
+import { Star, MapPin, ExternalLink } from "lucide-react";
 import { Button } from "@repo/ui/components/button";
-import { fetchItemVendorPrices, type VendorPriceRow } from "@/services/marketService";
+import type { VendorPriceRow } from "@/types/api/market";
 
-export function VendorComparisonTable({ itemId }: { itemId: number }) {
-  const [vendors, setVendors] = useState<VendorPriceRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchItemVendorPrices(itemId)
-      .then(setVendors)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [itemId]);
-
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-[#1e2330] rounded-3xl border border-[#e5e7eb] dark:border-[#2a3140] overflow-hidden shadow-sm h-64 flex items-center justify-center">
-        <Loader2 className="size-8 text-[#135bec] animate-spin" />
-      </div>
-    );
-  }
-
+export function VendorComparisonTable({ vendors }: { vendors: VendorPriceRow[] }) {
   if (vendors.length === 0) {
     return (
       <div className="bg-white dark:bg-[#1e2330] rounded-3xl border border-[#e5e7eb] dark:border-[#2a3140] overflow-hidden shadow-sm p-12 text-center">

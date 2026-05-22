@@ -517,6 +517,7 @@ export async function bulkCheckout(input: BulkCheckoutSchema): Promise<Purchase[
 
     return results;
   } catch (error) {
+    console.log(error)
     // Throw a plain Error so Next.js can serialize it across the Server Action
     // boundary. Custom error subclasses with unknown payloads cause
     // "Error in input stream" on the client.

@@ -8,7 +8,10 @@ const API_BASE_URL =
 export function createApiClient(getAccessToken?: () => string | null): AxiosInstance {
   const instance = axios.create({
     baseURL: API_BASE_URL,
-    withCredentials: true,
+    // Only send credentials (cookies) when a token accessor is provided.
+    // Many public endpoints (market/items, price averages, etc.) should not include cookies
+    // to avoid CORS/credential issues in the browser.
+    withCredentials: Boolean(getAccessToken),
     headers: {
       Accept: "application/json",
     },

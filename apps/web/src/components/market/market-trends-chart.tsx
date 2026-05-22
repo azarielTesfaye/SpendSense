@@ -1,87 +1,77 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useMemo, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
-  Area, AreaChart, CartesianGrid, Legend, Line, LineChart,
+  Area, AreaChart, CartesianGrid, Legend,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Loader2, RefreshCw, TrendingUp } from "lucide-react";
+import { RefreshCw, TrendingUp } from "lucide-react";
 import { Button } from "@repo/ui/components/button";
-import { fetchMarketForecasts, fetchInflationData, fetchMarketItems, fetchPriceTrends, type MarketItem } from "@/services/marketService";
 import { Skeleton } from "@repo/ui/components/skeleton";
+import type { MarketItem } from "@/types/api/vendor";
+import type { ForecastPoint, InflationResponse, TrendPoint } from "@/types/api/market";
 
 type ChartRow = { date: string; actual?: number; forecast?: number };
 
 const CITY_OPTIONS = ["Addis Ababa", "Dire Dawa", "Bahir Dar", "Hawassa", "Mekelle"];
 
-export function MarketTrendsChart() {
+type MarketTrendsChartProps = {
+  forecasts?: ForecastPoint[];
+  inflation?: InflationResponse | null;
+  initialCity?: string;
+  initialItemId?: number | null;
+  initialRange?: string;
+  items?: MarketItem[];
+  trends?: TrendPoint[];
+};
+
+export function MarketTrendsChart({
+  forecasts = [],
+  inflation = null,
+  initialCity = "Addis Ababa",
+  initialItemId = null,
+  initialRange = "3M",
+  items = [],
+  trends = [],
+}: MarketTrendsChartProps = {}) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [items, setItems] = useState<MarketItem[]>([]);
-  const [itemId, setItemId] = useState<number | null>(null);
-  const [city, setCity] = useState("Addis Ababa");
-  const [rows, setRows] = useState<ChartRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [inflation, setInflation] = useState<{ change_percent: number | null; current_avg: string | null } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [range, setRange] = useState<"1M" | "3M" | "6M" | "1Y">("3M");
+  const [isPending, startTransition] = useTransition();
+  const itemId = initialItemId;
+  const city = initialCity;
+  const range = initialRange;
+  const error = null;
+  const loading = isPending;
+  const rows = useMemo<ChartRow[]>(() => {
+    const hist = trends.map((t) => ({
+      date: t.date,
+      actual: parseFloat(t.average_price) || 0,
+    }));
+    const fc = forecasts.slice(0, 4).map((f) => ({
+      date: f.forecast_date,
+      forecast: parseFloat(f.predicted_price) || 0,
+    }));
+    return [...hist, ...fc];
+  }, [forecasts, trends]);
 
-  // Load items once
-  useEffect(() => {
-    fetchMarketItems()
-      .then((list) => {
-        setItems(list);
-      })
-      .catch(() => setError("Could not load items"));
-  }, []);
-
-  // Update selected item from URL query
-  useEffect(() => {
-    const fromQuery = searchParams.get("item_id");
-    if (fromQuery && items.length > 0) {
-      const parsed = parseInt(fromQuery, 10);
-      if (Number.isFinite(parsed) && items.some((i) => i.id === parsed)) {
-        setItemId(parsed);
-      }
-    } else if (itemId === null && items.length > 0) {
-      setItemId(items[0].id);
+  const updateChartParams = (updates: Record<string, string | number>) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(updates)) {
+      nextParams.set(key, String(value));
     }
-  }, [searchParams, items, itemId]);
-
-  const getFromDate = () => {
-    const d = new Date();
-    if (range === "1M") d.setMonth(d.getMonth() - 1);
-    else if (range === "3M") d.setMonth(d.getMonth() - 3);
-    else if (range === "6M") d.setMonth(d.getMonth() - 6);
-    else d.setFullYear(d.getFullYear() - 1);
-    return d.toISOString().slice(0, 10);
+    startTransition(() => {
+      router.push(`${pathname}?${nextParams.toString()}`);
+    });
   };
 
-  const loadSeries = useCallback(async () => {
-    if (itemId == null) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const from_date = getFromDate();
-      const [trends, forecast, infl] = await Promise.all([
-        fetchPriceTrends({ item_id: itemId, city, from_date }),
-        fetchMarketForecasts({ item_id: itemId, city, forecast_weeks: 4 }),
-        fetchInflationData({ city, item_id: itemId, period: "month" }),
-      ]);
-      setInflation(infl);
-      const hist: ChartRow[] = trends.map((t) => ({ date: t.date, actual: parseFloat(t.average_price) || 0 }));
-      const fc: ChartRow[] = forecast.slice(0, 4).map((f) => ({ date: f.forecast_date, forecast: parseFloat(f.predicted_price) || 0 }));
-      setRows([...hist, ...fc]);
-    } catch {
-      setError("Could not load trend data.");
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [itemId, city, range]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { if (itemId != null) void loadSeries(); }, [itemId, city, range, loadSeries]);
+  const refreshChart = () => {
+    startTransition(() => {
+      router.refresh();
+    });
+  };
 
   const selectedItem = items.find((i) => i.id === itemId);
 
@@ -110,7 +100,7 @@ export function MarketTrendsChart() {
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={itemId ?? ""}
-            onChange={(e) => setItemId(Number(e.target.value))}
+            onChange={(e) => updateChartParams({ item_id: Number(e.target.value) })}
             className="h-10 pl-3 pr-8 rounded-xl border-none bg-[#f0f2f4] dark:bg-[#2a3140] text-sm font-bold text-[#111318] dark:text-white outline-none focus:ring-2 focus:ring-[#135bec] transition-all cursor-pointer"
           >
             {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
@@ -118,7 +108,7 @@ export function MarketTrendsChart() {
 
           <select
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => updateChartParams({ city: e.target.value })}
             className="h-10 pl-3 pr-8 rounded-xl border-none bg-[#f0f2f4] dark:bg-[#2a3140] text-sm font-bold text-[#111318] dark:text-white outline-none focus:ring-2 focus:ring-[#135bec] transition-all cursor-pointer"
           >
             {CITY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -128,7 +118,7 @@ export function MarketTrendsChart() {
             {(["1M", "3M", "6M", "1Y"] as const).map((r) => (
               <button
                 key={r}
-                onClick={() => setRange(r)}
+                onClick={() => updateChartParams({ range: r })}
                 className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${range === r ? "bg-white dark:bg-[#1e2330] text-[#135bec] shadow-sm" : "text-[#616f89] hover:text-[#111318]"}`}
               >
                 {r}
@@ -136,7 +126,7 @@ export function MarketTrendsChart() {
             ))}
           </div>
 
-          <Button variant="outline" size="icon" onClick={() => void loadSeries()} disabled={loading} className="h-10 w-10 rounded-xl">
+          <Button variant="outline" size="icon" onClick={refreshChart} disabled={loading} className="h-10 w-10 rounded-xl">
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
@@ -145,7 +135,7 @@ export function MarketTrendsChart() {
       {error && (
         <div className="h-72 flex flex-col items-center justify-center text-red-500 bg-red-50/30 dark:bg-red-950/10 rounded-xl border border-dashed border-red-200">
           <p className="text-sm font-bold">{error}</p>
-          <Button variant="link" onClick={() => void loadSeries()} className="text-xs text-red-600 underline">Try again</Button>
+          <Button variant="link" onClick={refreshChart} className="text-xs text-red-600 underline">Try again</Button>
         </div>
       )}
 

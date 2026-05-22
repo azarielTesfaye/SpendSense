@@ -45,7 +45,7 @@ export type InAppNotification = {
   message: string;
   is_read: boolean;
   is_archived: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown> & { url?: string };
   created_at: string;
 };
 
@@ -57,7 +57,7 @@ export type NotificationListResponse = {
 };
 
 export async function listNotifications(
-  accessToken: string,
+  _accessToken: string,
   params?: {
     is_read?: boolean;
     is_archived?: boolean;
@@ -65,8 +65,6 @@ export async function listNotifications(
     page?: number;
   }
 ): Promise<NotificationListResponse> {
-  const api = createApiClient(() => accessToken);
-  
   const searchParams = new URLSearchParams();
   if (params) {
     if (params.is_read !== undefined) searchParams.append("status", params.is_read ? "read" : "unread");
@@ -76,9 +74,13 @@ export async function listNotifications(
   }
   
   const query = searchParams.toString();
-  const endpoint = `/api/users/me/notifications/${query ? `?${query}` : ""}`;
-  
-  const { data } = await api.get<any>(endpoint);
+  const response = await fetch(`/api/notifications${query ? `?${query}` : ""}`);
+
+  if (!response.ok) {
+    throw new Error("Failed to load notifications");
+  }
+
+  const data = (await response.json()) as NotificationListResponse | InAppNotification[];
   
   if (Array.isArray(data)) {
     return { results: data, count: data.length, next: null, previous: null };
@@ -93,25 +95,41 @@ export async function listNotifications(
 }
 
 export async function patchNotification(
-  accessToken: string,
+  _accessToken: string,
   id: number,
   body: { is_read?: boolean; is_archived?: boolean }
 ): Promise<InAppNotification> {
-  const api = createApiClient(() => accessToken);
-  const { data } = await api.patch<InAppNotification>(`/api/users/me/notifications/${id}/`, body);
-  return data;
+  const response = await fetch(`/api/notifications/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to update notification");
+  }
+
+  return (await response.json()) as InAppNotification;
 }
 
 export async function bulkUpdateNotifications(
-  accessToken: string,
+  _accessToken: string,
   action: "mark_read" | "archive" | "delete",
   notificationIds: number[]
 ): Promise<{ status: string }> {
-  const api = createApiClient(() => accessToken);
-  const { data } = await api.post<any>("/api/users/me/notifications/bulk/", {
-    action,
-    ids: notificationIds,
+  const response = await fetch("/api/notifications/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action,
+      ids: notificationIds,
+    }),
   });
-  return data;
+
+  if (!response.ok) {
+    throw new Error("Failed to update notifications");
+  }
+
+  return (await response.json()) as { status: string };
 }
 

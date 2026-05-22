@@ -1,241 +1,95 @@
-"use client";
+import { ApiError } from "@/lib/api";
+import { getMarketItems } from "@/lib/market";
+import {
+  getInflationData,
+  getItemVendorPrices,
+  getMarketForecasts,
+  getMarketItem,
+  getPriceAverages,
+  getPriceTrends,
+} from "@/lib/market-data";
+import { MarketItemDetailClient } from "./market-item-detail-client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { 
-  ArrowLeft, 
-  TrendingUp, 
-  TrendingDown, 
-  Minus, 
-  MapPin, 
-  Plus, 
-  Calendar,
-  ShoppingBasket,
-  ChevronRight,
-  Info,
-  AlertCircle,
-  RefreshCw,
-  Target
-} from "lucide-react";
-import { Button } from "@repo/ui/components/button";
-import { Skeleton } from "@repo/ui/components/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@repo/ui/components/alert";
-import { 
-  fetchMarketItem, 
-  fetchPriceTrends, 
-  fetchMarketForecasts, 
-  fetchInflationData,
-  fetchPriceAverages,
-  type MarketItem,
-  type PriceAverageRow,
-  type TrendPoint,
-  type ForecastPoint
-} from "@/services/marketService";
-import { MarketTrendsChart } from "@/components/market/market-trends-chart";
+type PageProps = {
+  params: Promise<{
+    id: string;
+  }>;
+};
 
-import { MarketSentimentCard } from "@/components/market/market-sentiment-card";
-import { VendorComparisonTable } from "@/components/market/vendor-comparison-table";
-import { SourcingMap } from "@/components/market/sourcing-map";
-import { MarketIntelligenceList } from "@/components/market/market-intelligence-list";
+function getFromDate() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 6);
+  return d.toISOString().slice(0, 10);
+}
 
-export default function MarketItemDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const itemId = Number.parseInt(String(params.id), 10);
-  
-  const [item, setItem] = useState<MarketItem | null>(null);
-  const [averages, setAverages] = useState<PriceAverageRow[]>([]);
-  const [inflation, setInflation] = useState<{ change_percent: number | null; current_avg: string | null } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default async function MarketItemDetailPage({ params }: PageProps) {
+  const { id } = await params;
+  const itemId = Number.parseInt(id, 10);
 
-  const fetchData = useCallback(async () => {
-    if (!Number.isFinite(itemId)) {
-      setError("Invalid product ID.");
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const [itemData, avgData, inflData] = await Promise.all([
-        fetchMarketItem(itemId),
-        fetchPriceAverages({ item_id: itemId }),
-        fetchInflationData({ item_id: itemId, period: "month" })
-      ]);
-      
-      setItem(itemData);
-      setAverages(avgData);
-      setInflation(inflData);
-    } catch (err) {
-      setError("We couldn't find the requested market item. It may have been removed or the ID is incorrect.");
-    } finally {
-      setLoading(false);
-    }
-  }, [itemId]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  const nationalAvg = useMemo(() => {
-    if (averages.length === 0) return null;
-    return averages.reduce((acc, curr) => acc + parseFloat(curr.average_price), 0) / averages.length;
-  }, [averages]);
-
-  if (loading) return <MarketItemDetailSkeleton />;
-
-  if (error || !item) {
+  if (!Number.isFinite(itemId)) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-        <div className="h-20 w-20 rounded-full bg-red-50 flex items-center justify-center mb-6">
-          <AlertCircle className="size-10 text-red-500" />
-        </div>
-        <h1 className="text-2xl font-bold text-slate-900">Item Not Found</h1>
-        <p className="text-slate-600 mt-2 max-w-md mx-auto">{error ?? "The item you are looking for does not exist in our database."}</p>
-        <Button variant="outline" className="mt-8" onClick={() => router.push("/market")}>
-          Back to Market Dashboard
-        </Button>
-      </div>
+      <MarketItemDetailClient
+        averages={[]}
+        chartForecasts={[]}
+        chartInflation={null}
+        chartTrends={[]}
+        error="Invalid product ID."
+        item={null}
+        items={[]}
+        vendors={[]}
+      />
     );
   }
 
-  // Mock data for the premium UI
-  const productDetails = [
-    { label: "Grade", value: "Magna (Premium)" },
-    { label: "Unit", value: item.unit },
-    { label: "Region", value: "Ada'a / Bishoftu" },
-    { label: "Shelf Life", value: "18 - 24 Months" },
-  ];
+  try {
+    const [item, averages, inflation, vendors, items, trends, forecasts] =
+      await Promise.all([
+        getMarketItem(itemId),
+        getPriceAverages({ item_id: itemId }),
+        getInflationData({ item_id: itemId, period: "month" }).catch(() => null),
+        getItemVendorPrices(itemId).catch(() => []),
+        getMarketItems().catch(() => []),
+        getPriceTrends({
+          item_id: itemId,
+          city: "Addis Ababa",
+          from_date: getFromDate(),
+        }).catch(() => []),
+        getMarketForecasts({
+          item_id: itemId,
+          city: "Addis Ababa",
+          forecast_weeks: 4,
+        }).catch(() => []),
+      ]);
 
-  const sourcingId = `ETH-${item.category.substring(0,3).toUpperCase()}-${String(item.id).padStart(4, '0')}`;
+    return (
+      <MarketItemDetailClient
+        averages={averages}
+        chartForecasts={forecasts}
+        chartInflation={inflation}
+        chartTrends={trends}
+        error={null}
+        item={item}
+        items={items.length > 0 ? items : [item]}
+        vendors={vendors}
+      />
+    );
+  } catch (error) {
+    const message =
+      error instanceof ApiError
+        ? error.message
+        : "We couldn't find the requested market item. It may have been removed or the ID is incorrect.";
 
-  return (
-    <div className="pb-20 max-w-[1600px] mx-auto">
-      {/* Top Header & Breadcrumbs */}
-      <div className="mb-8">
-        <nav className="flex items-center gap-2 text-xs font-bold text-[#616f89] uppercase tracking-widest mb-2">
-          <Link href="/market" className="hover:text-[#135bec] transition-colors">Market</Link>
-          <ChevronRight size={10} className="text-slate-300" />
-          <span className="text-slate-300">{item.category}</span>
-          <ChevronRight size={10} className="text-slate-300" />
-          <span className="text-[#135bec]">{item.name}</span>
-        </nav>
-        
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <h1 className="text-4xl md:text-5xl font-black text-[#111318] dark:text-white tracking-tight">
-              {item.name} — <span className="text-slate-400">Magna Grade</span>
-            </h1>
-            <p className="text-[#616f89] font-bold text-xs mt-2 uppercase tracking-widest">
-              Ethical Sourcing ID: <span className="text-[#111318] dark:text-white">{sourcingId}</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" className="rounded-xl font-bold text-xs h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-              <RefreshCw className="size-3.5 mr-2" /> Export Analysis
-            </Button>
-            <Button className="rounded-xl bg-[#135bec] hover:bg-[#0d4fd4] font-black text-xs h-11 shadow-lg shadow-blue-500/20 px-6">
-              <Plus className="size-4 mr-2" /> Source Batch
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Grid: Forecast & Sentiment */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
-        {/* Chart Column */}
-        <div className="lg:col-span-8 bg-white dark:bg-[#1e2330] rounded-3xl border border-[#e5e7eb] dark:border-[#2a3140] p-8 shadow-sm flex flex-col">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-10">
-            <div>
-              <h3 className="text-xl font-bold text-[#111318] dark:text-white">Historical Price & ML Forecast</h3>
-              <p className="text-sm text-[#616f89] mt-1">Data aggregated from {averages.length} regional markets</p>
-            </div>
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-              {['6M', '1Y', 'All'].map((t) => (
-                <button 
-                  key={t}
-                  className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${t === '6M' ? 'bg-white dark:bg-slate-900 text-[#135bec] shadow-sm' : 'text-[#616f89] hover:text-[#111318]'}`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          <div className="flex-1 min-h-[300px]">
-            <MarketTrendsChart />
-          </div>
-        </div>
-
-        {/* Sidebar Info Column */}
-        <div className="lg:col-span-4 flex flex-col gap-6">
-          <MarketSentimentCard 
-            sentiment={inflation?.change_percent && inflation.change_percent > 10 ? "High Volatility" : "Rising"}
-            predictionText={`Prices are expected to ${inflation?.change_percent && inflation.change_percent > 0 ? 'rise' : 'stabilize'} by ${Math.abs(inflation?.change_percent || 5).toFixed(1)}% in the next quarter due to seasonal shifts and local harvest reports.`}
-            yearOverYear={12.4}
-          />
-
-          <div className="bg-white dark:bg-[#1e2330] rounded-3xl border border-[#e5e7eb] dark:border-[#2a3140] p-6 shadow-sm flex-1">
-            <h4 className="text-sm font-black text-[#111318] dark:text-white uppercase tracking-widest mb-6">Product Details</h4>
-            <div className="space-y-4">
-              {productDetails.map((detail) => (
-                <div key={detail.label} className="flex items-center justify-between py-1">
-                  <span className="text-xs font-bold text-[#616f89] uppercase tracking-tighter">{detail.label}</span>
-                  <span className="text-sm font-black text-[#111318] dark:text-white">{detail.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Vendor Comparison Section */}
-      <div className="mb-8">
-        <VendorComparisonTable itemId={item.id} />
-      </div>
-
-      {/* Bottom Grid: Sourcing & Intel */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SourcingMap />
-        <MarketIntelligenceList />
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, subValue, icon }: { label: string; value: string; subValue: string; icon: React.ReactNode }) {
-  return (
-    <div className="bg-white dark:bg-[#1e2330] rounded-2xl p-6 border border-[#e5e7eb] dark:border-[#2a3140] shadow-sm hover:border-[#135bec]/30 transition-all">
-      <div className="flex justify-between items-start mb-4">
-        <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800 group-hover:bg-blue-50 transition-colors">
-          {icon}
-        </div>
-      </div>
-      <p className="text-[#616f89] dark:text-gray-400 text-xs font-bold uppercase tracking-wider">{label}</p>
-      <p className="text-2xl font-black text-[#111318] dark:text-white mt-1 tabular-nums">{value}</p>
-      <p className="text-[10px] font-bold text-[#616f89] mt-1">{subValue}</p>
-    </div>
-  );
-}
-
-function MarketItemDetailSkeleton() {
-  return (
-    <div className="space-y-8 pb-20">
-      <div className="flex justify-between items-center">
-        <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-9 w-32" />
-      </div>
-      <Skeleton className="h-48 md:h-64 w-full rounded-3xl" />
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <Skeleton className="lg:col-span-8 h-80 rounded-2xl" />
-        <Skeleton className="lg:col-span-4 h-80 rounded-2xl" />
-      </div>
-    </div>
-  );
+    return (
+      <MarketItemDetailClient
+        averages={[]}
+        chartForecasts={[]}
+        chartInflation={null}
+        chartTrends={[]}
+        error={message}
+        item={null}
+        items={[]}
+        vendors={[]}
+      />
+    );
+  }
 }
