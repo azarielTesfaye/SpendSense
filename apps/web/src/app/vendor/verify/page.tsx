@@ -3,6 +3,8 @@ import { getVerificationStatus } from "@/actions/vendor/getVerificationStatus";
 import Link from "next/link";
 import { VerificationForm } from "./_components/verification-form";
 
+export const dynamic = "force-dynamic";
+
 export default async function VendorVerifyPage() {
   const status = await getVerificationStatus();
 

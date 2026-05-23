@@ -107,8 +107,8 @@ export function VendorComparisonTable({ vendors }: { vendors: VendorPriceRow[] }
                 </td>
                 <td className="py-6 pr-8 pl-4 text-right">
                   <Button variant="ghost" size="sm" className="text-[#616f89] hover:text-[#135bec] hover:bg-blue-50 font-bold text-xs h-8" asChild>
-                    <Link href={`/shop/vendors/${vendor.vendor_id}`}>
-                      View <ExternalLink className="size-3 ml-1.5" />
+                    <Link href={`/vendors/${vendor.vendor_id}`}>
+                      View Shop<ExternalLink className="size-3 ml-1.5" />
                     </Link>
                   </Button>
                 </td>

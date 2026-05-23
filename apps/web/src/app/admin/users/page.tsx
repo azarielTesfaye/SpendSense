@@ -1,5 +1,3 @@
-"use server";
-
 export const dynamic = "force-dynamic";
 
 import AdminPanelShell from "../_components/admin-panel-shell";

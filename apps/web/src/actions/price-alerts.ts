@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { priceAlertInputSchema } from "@/lib/validation/product-details";
+import { priceAlertInputSchema } from "@/lib/validation/price-alerts";
 import { apiClient, ApiError } from "@/lib/api";
 
 type ActionResult<T> =
@@ -12,8 +12,10 @@ export async function createPriceAlert(
   itemId: string,
   targetPrice: number,
   city?: string,
+  alertMethods?: string[],
+  expiry?: string,
 ): Promise<ActionResult<{ alertId: string }>> {
-  const parsed = priceAlertInputSchema.parse({ itemId, targetPrice, city });
+  const parsed = priceAlertInputSchema.parse({ itemId, targetPrice, city, alertMethods, expiry });
   try {
     const data = await apiClient<{ id: number }>({
       method: "POST",
@@ -22,6 +24,8 @@ export async function createPriceAlert(
         item: Number(parsed.itemId),
         target_price: parsed.targetPrice,
         city: parsed.city || undefined,
+        alert_methods: alertMethods,
+        expiry: expiry,
       },
     });
     return { success: true, data: { alertId: String(data.id) } };

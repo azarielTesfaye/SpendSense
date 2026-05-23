@@ -107,4 +107,25 @@ export const productSearchParamsSchema = z.object({
   maxPrice: z.coerce.number().optional(),
   sortBy: z.enum(["popularity", "price", "newest"]).optional(),
   page: z.coerce.number().optional(),
+  page_size: z.coerce.number().optional(),
 });
+
+export const vendorPriceTrendSchema = z.object({
+  weeks: z.array(z.string()),
+  vendorPrices: z.array(z.number()),
+  marketPrices: z.array(z.number()),
+});
+
+export const similarVendorSchema = z.object({
+  id: z.string(),
+  shopName: z.string(),
+  imageUrl: z.string().nullable(),
+  rating: z.number(),
+  reviewCount: z.number(),
+  location: z.string(),
+  itemsListed: z.number(),
+  competitivenessScore: z.number(),
+});
+
+export const similarVendorListSchema = z.array(similarVendorSchema);
+

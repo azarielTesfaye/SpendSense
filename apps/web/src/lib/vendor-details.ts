@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api";
 import { VendorDetailResponse, VendorProductListResponse, VendorReviewListResponse } from "@/types/api/vendor-details";
-import { vendorDetailSchema, vendorProductListSchema, vendorProductSchema, vendorReviewListSchema, productSearchParamsSchema } from "@/lib/validation/vendor-details";
+import { vendorDetailSchema, vendorProductListSchema, vendorProductSchema, vendorReviewListSchema, productSearchParamsSchema, vendorPriceTrendSchema, similarVendorListSchema } from "@/lib/validation/vendor-details";
 
 // Raw shape returned by GET /api/ecommerce/listings/<pk>/
 interface RawListing {
@@ -59,3 +59,23 @@ export async function getVendorListing(listingId: string) {
   });
   return vendorProductSchema.parse(rawData);
 }
+
+export async function getVendorPriceTrend(vendorId: string) {
+  const rawData = await apiClient<any>({
+    method: "GET",
+    endpoint: `/api/market/vendors/${vendorId}/price-trend/`,
+    next: { tags: [`vendor:${vendorId}:price-trend`], revalidate: 60 },
+  });
+  return vendorPriceTrendSchema.parse(rawData);
+}
+
+export async function getSimilarVendors(vendorId: string, region?: string, limit: number = 6) {
+  const rawData = await apiClient<any>({
+    method: "GET",
+    endpoint: `/api/market/vendors/${vendorId}/similar/`,
+    query: { region, limit },
+    next: { tags: [`vendor:${vendorId}:similar`], revalidate: 60 },
+  });
+  return similarVendorListSchema.parse(rawData);
+}
+
