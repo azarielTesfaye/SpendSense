@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Suspense, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { 
   Star, 
@@ -26,7 +26,7 @@ const QUICK_TAGS = [
   "Fair Pricing", "Easy Returns", "Secure Packaging"
 ];
 
-export default function SubmitReview() {
+function SubmitReviewContent() {
   const searchParams = useSearchParams();
   const vendorId = searchParams.get("vendorId") ?? "";
   const vendorName = searchParams.get("vendorName") ?? "Bole Electronics Hub";
@@ -237,5 +237,17 @@ export default function SubmitReview() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SubmitReview() {
+  return (
+    <Suspense fallback={
+      <div className="max-w-5xl mx-auto flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <SubmitReviewContent />
+    </Suspense>
   );
 }

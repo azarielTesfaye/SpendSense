@@ -3,8 +3,9 @@ import { getMarketItems } from "@/lib/market";
 import {
   getInflationData,
   getMarketForecasts,
-  getPriceAverages,
+  getLivePrices,
   getPriceTrends,
+  getPriceAlerts,
 } from "@/lib/market-data";
 import { LivePriceClient } from "./live-price-client";
 
@@ -13,6 +14,10 @@ type PageProps = {
     city?: string;
     item_id?: string;
     range?: string;
+    search?: string;
+    category?: string;
+    sort?: string;
+    page?: string;
   }>;
 };
 
@@ -27,14 +32,29 @@ function getFromDate(range: string | undefined) {
 
 export default async function PriceTrendsPage({ searchParams }: PageProps) {
   const params = await searchParams;
-  const city = params?.city || "Addis Ababa";
-  const range = params?.range || "3M";
+  const activeCity = params?.city || "All Regions";
+  const activeRange = params?.range || "3M";
+  const activeSearch = params?.search || "";
+  const activeCategory = params?.category || "All Categories";
+  const activeSort = params?.sort || "name";
+  const activePage = params?.page ? parseInt(params.page, 10) : 1;
+
+  const chartCity = activeCity === "All Regions" ? "Addis Ababa" : activeCity;
 
   try {
-    const [items, averages] = await Promise.all([
+    const [items, livePrices, alerts] = await Promise.all([
       getMarketItems(),
-      getPriceAverages(),
+      getLivePrices({
+        search: activeSearch || undefined,
+        category: activeCategory && activeCategory !== "All Categories" ? activeCategory : undefined,
+        city: activeCity && activeCity !== "All Regions" ? activeCity : undefined,
+        sort: activeSort || undefined,
+        page: activePage,
+        page_size: 10,
+      }),
+      getPriceAlerts(),
     ]);
+
     const parsedItemId = Number.parseInt(params?.item_id ?? "", 10);
     const selectedItemId = Number.isFinite(parsedItemId)
       ? parsedItemId
@@ -45,34 +65,34 @@ export default async function PriceTrendsPage({ searchParams }: PageProps) {
         ? [null, [], []]
         : await Promise.all([
             getInflationData({
-              city,
+              city: chartCity,
               item_id: selectedItemId,
               period: "month",
             }).catch(() => null),
             getPriceTrends({
               item_id: selectedItemId,
-              city,
-              from_date: getFromDate(range),
+              city: chartCity,
+              from_date: getFromDate(activeRange),
             }).catch(() => []),
             getMarketForecasts({
               item_id: selectedItemId,
-              city,
+              city: chartCity,
               forecast_weeks: 4,
             }).catch(() => []),
           ]);
 
     return (
       <LivePriceClient
-        averages={averages}
-        chartCity={city}
+        initialLivePrices={livePrices}
+        chartCity={chartCity}
         chartForecasts={forecasts}
         chartInflation={inflation}
-        chartRange={range}
+        chartRange={activeRange}
         chartTrends={trends}
         initialError={null}
         items={items}
-        lastUpdated={new Date().toISOString()}
         selectedChartItemId={selectedItemId}
+        initialAlerts={alerts}
       />
     );
   } catch (error) {
@@ -80,19 +100,31 @@ export default async function PriceTrendsPage({ searchParams }: PageProps) {
       error instanceof ApiError
         ? error.message
         : "Unable to load market data. The server might be down or unreachable.";
-
     return (
       <LivePriceClient
-        averages={[]}
-        chartCity={city}
+        initialLivePrices={{
+          results: [],
+          pagination: { total_records: 0, total_pages: 1, page_size: 10, current_page: 1 },
+          categories: [],
+          cities: [],
+          last_updated: new Date().toISOString(),
+          summaries: {
+            avgBasketCost: null,
+            mostVolatileName: null,
+            mostVolatileCount: 0,
+            bestValueCity: null,
+            bestValuePrice: null,
+          },
+        }}
+        chartCity={chartCity}
         chartForecasts={[]}
         chartInflation={null}
-        chartRange={range}
+        chartRange={activeRange}
         chartTrends={[]}
         initialError={message}
         items={[]}
-        lastUpdated={new Date().toISOString()}
         selectedChartItemId={null}
+        initialAlerts={[]}
       />
     );
   }

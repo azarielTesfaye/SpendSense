@@ -103,7 +103,8 @@ function PaymentReturnInner() {
         return;
       }
 
-      const orders = await getOrders();
+      const ordersRes = await getOrders();
+      const orders = ordersRes.results;
       console.log('[PaymentReturn] fetched user orders count=', orders.length);
       const pendingRefs = new Set(pending.references);
       const matchingOrders = orders.filter((order) => pendingRefs.has(order.reference));

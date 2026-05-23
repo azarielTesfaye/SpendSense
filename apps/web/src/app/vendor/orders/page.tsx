@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Bell, ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
 import { apiClient, ApiError } from "@/lib/api";

@@ -5,6 +5,8 @@ import {
   priceAverageListSchema,
   trendListSchema,
   vendorPriceListSchema,
+  priceAlertListSchema,
+  livePriceResponseSchema,
 } from "@/lib/validation/market";
 import { marketItemSchema } from "@/lib/validation/vendor";
 import type {
@@ -17,6 +19,9 @@ import type {
   TrendPoint,
   VendorPriceListResponse,
   VendorPriceRow,
+  PriceAlert,
+  PriceAlertListResponse,
+  LivePriceResponse,
 } from "@/types/api/market";
 import type { MarketItem } from "@/types/api/vendor";
 
@@ -118,3 +123,38 @@ export async function getItemVendorPrices(
 
   return vendorPriceListSchema.parse(data);
 }
+
+export async function getPriceAlerts(): Promise<PriceAlert[]> {
+  try {
+    const data = await apiClient<PriceAlertListResponse>({
+      method: "GET",
+      endpoint: "/api/market/price-alerts/",
+      cache: "no-store",
+    });
+    return priceAlertListSchema.parse(data);
+  } catch (error) {
+    console.error("Failed to fetch price alerts:", error);
+    return [];
+  }
+}
+
+export type LivePriceParams = {
+  search?: string;
+  category?: string;
+  city?: string;
+  sort?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export async function getLivePrices(params?: LivePriceParams): Promise<LivePriceResponse> {
+  const data = await apiClient<LivePriceResponse>({
+    method: "GET",
+    endpoint: "/api/market/prices/averages/",
+    query: params,
+    cache: "no-store",
+  });
+
+  return livePriceResponseSchema.parse(data);
+}
+

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -20,7 +20,7 @@ import { resetPasswordSchema, type ResetPasswordSchema } from "@/lib/validation/
 import { createZodResolver } from "@/lib/validation/zod-resolver";
 import { useAuth } from "@/providers/auth-provider";
 
-export default function ResetPasswordPage() {
+function ResetPasswordPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { confirmPasswordReset } = useAuth();
@@ -130,5 +130,17 @@ export default function ResetPasswordPage() {
         </form>
       </Form>
     </AuthShell>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="w-full max-w-[450px] overflow-hidden rounded-2xl border border-border/50 bg-background shadow-xl p-12 flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <ResetPasswordPageContent />
+    </Suspense>
   );
 }

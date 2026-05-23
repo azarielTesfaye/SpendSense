@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import numpy as np
 import pandas as pd
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, F
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, status
@@ -107,8 +107,13 @@ class PriceAveragesView(APIView):
             openapi.Parameter("city", openapi.IN_QUERY, type=openapi.TYPE_STRING),
             openapi.Parameter("from_date", openapi.IN_QUERY, type=openapi.TYPE_STRING),
             openapi.Parameter("to_date", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("search", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("category", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("sort", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("page", openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
+            openapi.Parameter("page_size", openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
         ],
-        responses={200: "List of average price rows"},
+        responses={200: "List of average price rows or paginated results with metadata"},
     )
     def get(self, request):
         item_id = request.query_params.get("item_id")
@@ -116,33 +121,183 @@ class PriceAveragesView(APIView):
         from_date = request.query_params.get("from_date")
         to_date = request.query_params.get("to_date")
 
-        qs = PriceSubmission.objects.filter(status="approved")
+        # Keep original behavior if item_id is provided
         if item_id:
-            qs = qs.filter(item_id=item_id)
-        if city:
-            qs = qs.filter(city__iexact=city)
-        if from_date:
-            qs = qs.filter(date_observed__gte=from_date)
-        if to_date:
-            qs = qs.filter(date_observed__lte=to_date)
+            qs = PriceSubmission.objects.filter(status="approved", item_id=item_id)
+            if city:
+                qs = qs.filter(city__iexact=city)
+            if from_date:
+                qs = qs.filter(date_observed__gte=from_date)
+            if to_date:
+                qs = qs.filter(date_observed__lte=to_date)
 
-        rows = (
-            qs.values("item", "item__name", "city")
-            .annotate(avg_price=Avg("price_value"), count=Count("id"))
-            .order_by("item__name", "city")
+            rows = (
+                qs.values("item", "item__name", "city")
+                .annotate(avg_price=Avg("price_value"), count=Count("id"))
+                .order_by("item__name", "city")
+            )
+            data = [
+                {
+                    "item_id": r["item"],
+                    "item_name": r["item__name"],
+                    "average_price": str(round(r["avg_price"], 2)),
+                    "city": r["city"],
+                    "source": "crowdsourced",
+                    "count": r["count"],
+                }
+                for r in rows
+            ]
+            return Response(data)
+
+        # Paginated query for all items
+        search = request.query_params.get("search")
+        category = request.query_params.get("category")
+        sort_opt = request.query_params.get("sort", "name")
+        page = int(request.query_params.get("page", 1))
+        page_size = min(int(request.query_params.get("page_size", 10)), 100)
+
+        items_qs = Item.objects.all()
+
+        if search:
+            items_qs = items_qs.filter(Q(name__icontains=search) | Q(category__icontains=search))
+        if category and category not in ("All Categories", "all"):
+            items_qs = items_qs.filter(category__iexact=category)
+
+        # Set up average price and submission count expressions depending on city filter
+        if city and city not in ("All Regions", "all"):
+            avg_price_expr = Avg(
+                "pricesubmission__price_value",
+                filter=Q(pricesubmission__status="approved", pricesubmission__city__iexact=city)
+            )
+            sub_count_expr = Count(
+                "pricesubmission__id",
+                filter=Q(pricesubmission__status="approved", pricesubmission__city__iexact=city)
+            )
+        else:
+            avg_price_expr = Avg(
+                "pricesubmission__price_value",
+                filter=Q(pricesubmission__status="approved")
+            )
+            sub_count_expr = Count(
+                "pricesubmission__id",
+                filter=Q(pricesubmission__status="approved")
+            )
+
+        items_qs = items_qs.annotate(
+            avg_price=avg_price_expr,
+            submission_count=sub_count_expr
         )
-        data = [
+
+        if sort_opt == "avg_price_asc":
+            items_qs = items_qs.order_by(F("avg_price").asc(nulls_last=True), "name")
+        elif sort_opt == "avg_price_desc":
+            items_qs = items_qs.order_by(F("avg_price").desc(nulls_last=True), "name")
+        elif sort_opt == "trend":
+            items_qs = items_qs.order_by(F("submission_count").desc(nulls_last=True), "name")
+        else:
+            items_qs = items_qs.order_by("name")
+
+        total = items_qs.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_items = list(items_qs[start:end])
+
+        # Get best price and location for the items on the current page
+        item_ids = [item.id for item in page_items]
+        best_prices = {}
+        if item_ids:
+            city_averages = (
+                PriceSubmission.objects.filter(item_id__in=item_ids, status="approved")
+                .values("item_id", "city")
+                .annotate(avg_price=Avg("price_value"), count=Count("id"))
+                .order_by("item_id", "avg_price")
+            )
+            for row in city_averages:
+                i_id = row["item_id"]
+                if i_id not in best_prices:
+                    best_prices[i_id] = {
+                        "best_price": str(round(row["avg_price"], 2)),
+                        "best_city": row["city"]
+                    }
+
+        # Serialized output
+        results = [
             {
-                "item_id": r["item"],
-                "item_name": r["item__name"],
-                "average_price": str(round(r["avg_price"], 2)),
-                "city": r["city"],
-                "source": "crowdsourced",
-                "count": r["count"],
+                "id": item.id,
+                "name": item.name,
+                "category": item.category,
+                "unit": item.unit,
+                "avgPrice": float(round(item.avg_price, 2)) if item.avg_price is not None else None,
+                "bestPrice": float(best_prices[item.id]["best_price"]) if item.id in best_prices else None,
+                "bestCity": best_prices[item.id]["best_city"] if item.id in best_prices else None,
+                "submissionCount": item.submission_count
             }
-            for r in rows
+            for item in page_items
         ]
-        return Response(data)
+
+        # Calculate summary statistics across all matching records
+        summary_submissions_qs = PriceSubmission.objects.filter(status="approved")
+        if city and city not in ("All Regions", "all"):
+            summary_submissions_qs = summary_submissions_qs.filter(city__iexact=city)
+        if category and category not in ("All Categories", "all"):
+            summary_submissions_qs = summary_submissions_qs.filter(item__category__iexact=category)
+        if search:
+            summary_submissions_qs = summary_submissions_qs.filter(
+                Q(item__name__icontains=search) | Q(item__category__icontains=search)
+            )
+
+        avg_basket_cost_val = summary_submissions_qs.aggregate(avg=Avg("price_value"))["avg"]
+        avg_basket_cost = float(round(avg_basket_cost_val, 2)) if avg_basket_cost_val is not None else None
+
+        most_volatile_row = (
+            summary_submissions_qs.values("item__name")
+            .annotate(cnt=Count("id"))
+            .order_by("-cnt")
+            .first()
+        )
+        most_volatile_name = most_volatile_row["item__name"] if most_volatile_row else None
+        most_volatile_count = most_volatile_row["cnt"] if most_volatile_row else 0
+
+        best_value_row = (
+            summary_submissions_qs.values("city", "item__name")
+            .annotate(avg_price=Avg("price_value"))
+            .order_by("avg_price")
+            .first()
+        )
+        best_value_city = best_value_row["city"] if best_value_row else None
+        best_value_price = float(round(best_value_row["avg_price"], 2)) if best_value_row else None
+
+        # Metadata lists for filter dropdowns
+        categories = list(
+            Item.objects.exclude(category="").values_list("category", flat=True).distinct().order_by("category")
+        )
+        cities_list = list(
+            PriceSubmission.objects.filter(status="approved").exclude(city="").values_list("city", flat=True).distinct().order_by("city")
+        )
+
+        last_sub = PriceSubmission.objects.filter(status="approved").order_by("-created_at").first()
+        from django.utils import timezone
+        last_updated = last_sub.created_at.isoformat() if last_sub else timezone.now().isoformat()
+
+        return Response({
+            "results": results,
+            "pagination": {
+                "total_records": total,
+                "total_pages": (total + page_size - 1) // page_size if total else 1,
+                "page_size": page_size,
+                "current_page": page,
+            },
+            "categories": categories,
+            "cities": cities_list,
+            "last_updated": last_updated,
+            "summaries": {
+                "avgBasketCost": avg_basket_cost,
+                "mostVolatileName": most_volatile_name,
+                "mostVolatileCount": most_volatile_count,
+                "bestValueCity": best_value_city,
+                "bestValuePrice": best_value_price,
+            }
+        })
 
 
 class AdminPendingSubmissionsView(generics.ListAPIView):

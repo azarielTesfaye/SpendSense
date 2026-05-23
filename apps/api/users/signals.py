@@ -67,6 +67,49 @@ def _emit_realtime_bridge(user_id: str, event: str, payload: dict) -> None:
         logger.debug("Realtime emit skipped: %s", e)
 
 
+def emit_realtime_broadcast(room: str, event: str, payload: dict) -> None:
+    """Deliver a room broadcast to Express Socket.io: Redis PUB/SUB if configured, else HTTP internal emit."""
+    envelope = json.dumps(
+        {"room": room, "event": event, "payload": payload},
+        default=str,
+    )
+    redis_url = getattr(settings, "REDIS_URL", "") or ""
+    if redis_url:
+        try:
+            import redis
+
+            r = redis.from_url(redis_url, decode_responses=True)
+            r.publish("spendsense:notifications", envelope)
+            logger.debug("Realtime broadcast published to Redis (%s)", event)
+            return
+        except Exception as exc:
+            logger.warning("Redis publish failed, falling back to HTTP: %s", exc)
+
+    base = getattr(settings, "REALTIME_INTERNAL_URL", "") or ""
+    token = getattr(settings, "REALTIME_INTERNAL_TOKEN", "")
+    if not base:
+        return
+    url = f"{base.rstrip('/')}/internal/emit"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(
+            {"room": room, "event": event, "payload": payload},
+            default=str,
+        ).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-Internal-Token": token,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status >= 400:
+                logger.warning("Realtime broadcast emit returned %s", resp.status)
+    except urllib.error.URLError as e:
+        logger.debug("Realtime broadcast emit skipped: %s", e)
+
+
 @receiver(post_save, sender=Notification)
 def push_notification_to_realtime(sender, instance, created, **kwargs):
     if not created:

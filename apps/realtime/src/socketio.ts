@@ -65,6 +65,12 @@ export function attachSocketIO(httpServer: HttpServer): Server {
       }
     });
 
+    socket.on("subscribe:market_prices", (_msg: unknown, ack?: (e: Error | null) => void) => {
+      void socket.join("market_prices");
+      log(`socket ${socket.id} subscribe:market_prices → market_prices`);
+      ack?.(null);
+    });
+
     socket.on("subscribe_budget", (msg: { budget_id?: number }) => {
       if (msg?.budget_id != null && authed.sub) {
         void socket.join(`budget:${authed.sub}:${msg.budget_id}`);
@@ -92,16 +98,24 @@ export function registerInternalEmit(app: Express, io: Server): void {
       res.status(401).json({ detail: "Unauthorized" });
       return;
     }
-    const { userId, event, payload } = req.body as {
+    const { userId, room, event, payload } = req.body as {
       userId?: string;
+      room?: string;
       event?: string;
       payload?: unknown;
     };
-    if (!userId || !event) {
-      res.status(400).json({ detail: "userId and event required" });
+    if (!event) {
+      res.status(400).json({ detail: "event required" });
       return;
     }
-    io.to(`user:${userId}`).emit(event, payload);
+    if (room) {
+      io.to(room).emit(event, payload);
+    } else if (userId) {
+      io.to(`user:${userId}`).emit(event, payload);
+    } else {
+      res.status(400).json({ detail: "userId or room required" });
+      return;
+    }
     res.json({ ok: true, delivered: true });
   });
 }

@@ -69,11 +69,25 @@ export function MarketItemDetailClient({
     );
   }
 
+  const dynamicRegion = useMemo(() => {
+    if (vendors.length === 0) return "Ada'a, Bishoftu, Ethiopia";
+    const cities = Array.from(new Set(vendors.map(v => v.city).filter(Boolean)));
+    if (cities.length === 0) return "Ada'a, Bishoftu, Ethiopia";
+    return `${cities.join(", ")}, Ethiopia`;
+  }, [vendors]);
+
+  const productDetailsRegion = useMemo(() => {
+    if (vendors.length === 0) return "Ada'a / Bishoftu";
+    const cities = Array.from(new Set(vendors.map(v => v.city).filter(Boolean)));
+    if (cities.length === 0) return "Ada'a / Bishoftu";
+    return cities.join(" / ");
+  }, [vendors]);
+
   // Mock data for the premium UI
   const productDetails = [
     { label: "Grade", value: "Magna (Premium)" },
     { label: "Unit", value: item.unit },
-    { label: "Region", value: "Ada'a / Bishoftu" },
+    { label: "Region", value: productDetailsRegion },
     { label: "Shelf Life", value: "18 - 24 Months" },
   ];
 
@@ -100,13 +114,20 @@ export function MarketItemDetailClient({
             <p className="text-[#616f89] font-bold text-xs mt-2 uppercase tracking-widest">
               Ethical Sourcing ID: <span className="text-[#111318] dark:text-white">{sourcingId}</span>
             </p>
+            {item.description && (
+              <p className="text-[#616f89] dark:text-slate-400 text-sm mt-3 max-w-2xl leading-relaxed">
+                {item.description}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" className="rounded-xl font-bold text-xs h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <RefreshCw className="size-3.5 mr-2" /> Export Analysis
             </Button>
-            <Button className="rounded-xl bg-[#135bec] hover:bg-[#0d4fd4] font-black text-xs h-11 shadow-lg shadow-blue-500/20 px-6">
-              <Plus className="size-4 mr-2" /> Source Batch
+            <Button asChild className="rounded-xl bg-[#135bec] hover:bg-[#0d4fd4] font-black text-xs h-11 shadow-lg shadow-blue-500/20 px-6">
+              <Link href={`/shop/vendors?q=${encodeURIComponent(item.name)}`}>
+                <Plus className="size-4 mr-2" /> Source Batch
+              </Link>
             </Button>
           </div>
         </div>
@@ -115,25 +136,8 @@ export function MarketItemDetailClient({
       {/* Main Grid: Forecast & Sentiment */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
         {/* Chart Column */}
-        <div className="lg:col-span-8 bg-white dark:bg-[#1e2330] rounded-3xl border border-[#e5e7eb] dark:border-[#2a3140] p-8 shadow-sm flex flex-col">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-10">
-            <div>
-              <h3 className="text-xl font-bold text-[#111318] dark:text-white">Historical Price & ML Forecast</h3>
-              <p className="text-sm text-[#616f89] mt-1">Data aggregated from {averages.length} regional markets</p>
-            </div>
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-              {['6M', '1Y', 'All'].map((t) => (
-                <button 
-                  key={t}
-                  className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${t === '6M' ? 'bg-white dark:bg-slate-900 text-[#135bec] shadow-sm' : 'text-[#616f89] hover:text-[#111318]'}`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="lg:col-span-8 bg-white dark:bg-[#1e2330] rounded-3xl  flex flex-col">
           
-          <div className="flex-1 min-h-[300px]">
             <MarketTrendsChart
               forecasts={chartForecasts}
               inflation={chartInflation}
@@ -143,15 +147,32 @@ export function MarketItemDetailClient({
               items={items}
               trends={chartTrends}
             />
-          </div>
+         
         </div>
 
         {/* Sidebar Info Column */}
         <div className="lg:col-span-4 flex flex-col gap-6">
           <MarketSentimentCard 
-            sentiment={chartInflation?.change_percent && chartInflation.change_percent > 10 ? "High Volatility" : "Rising"}
-            predictionText={`Prices are expected to ${chartInflation?.change_percent && chartInflation.change_percent > 0 ? 'rise' : 'stabilize'} by ${Math.abs(chartInflation?.change_percent || 5).toFixed(1)}% in the next quarter due to seasonal shifts and local harvest reports.`}
-            yearOverYear={12.4}
+            sentiment={
+              chartInflation?.change_percent !== null && chartInflation?.change_percent !== undefined
+                ? chartInflation.change_percent > 10
+                  ? "High Volatility"
+                  : chartInflation.change_percent > 1
+                  ? "Rising"
+                  : chartInflation.change_percent < -1
+                  ? "Falling"
+                  : "Stable"
+                : "Stable"
+            }
+            predictionText={
+              chartInflation?.change_percent !== null && chartInflation?.change_percent !== undefined
+                ? `Prices are expected to ${
+                    chartInflation.change_percent > 0 ? "rise" : chartInflation.change_percent < 0 ? "fall or stabilize" : "stabilize"
+                  } by ${Math.abs(chartInflation.change_percent).toFixed(1)}% compared to the previous period, based on current local submissions.`
+                : "Prices are expected to stabilize over the next period, based on seasonal shifts and local harvest reports."
+            }
+            inflationRate={chartInflation?.change_percent ?? null}
+            period={chartInflation?.period}
           />
 
           <div className="bg-white dark:bg-[#1e2330] rounded-3xl border border-[#e5e7eb] dark:border-[#2a3140] p-6 shadow-sm flex-1">
@@ -175,8 +196,8 @@ export function MarketItemDetailClient({
 
       {/* Bottom Grid: Sourcing & Intel */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SourcingMap />
-        <MarketIntelligenceList />
+        <SourcingMap location={dynamicRegion} />
+        <MarketIntelligenceList item={item} vendors={vendors} trends={chartTrends} forecasts={chartForecasts} />
       </div>
     </div>
   );

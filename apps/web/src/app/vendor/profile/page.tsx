@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import type { VendorProfile } from "../_lib/vendor-api";
 import { apiClient } from "@/lib/api";
 import VendorProfileClient from "./VendorProfileClient";

@@ -11,8 +11,9 @@ type ActionResult<T> =
 export async function createPriceAlert(
   itemId: string,
   targetPrice: number,
+  city?: string,
 ): Promise<ActionResult<{ alertId: string }>> {
-  const parsed = priceAlertInputSchema.parse({ itemId, targetPrice });
+  const parsed = priceAlertInputSchema.parse({ itemId, targetPrice, city });
   try {
     const data = await apiClient<{ id: number }>({
       method: "POST",
@@ -20,6 +21,7 @@ export async function createPriceAlert(
       body: {
         item: Number(parsed.itemId),
         target_price: parsed.targetPrice,
+        city: parsed.city || undefined,
       },
     });
     return { success: true, data: { alertId: String(data.id) } };

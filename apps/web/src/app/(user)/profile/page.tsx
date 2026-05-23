@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { apiClient } from "@/lib/api";
 import ProfileClient from "./ProfileClient";
 import type { UserProfile } from "@/services/userService";

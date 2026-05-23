@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { apiClient } from "@/lib/api";
 import { type ExpenseRecord } from "@/types/finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/card";

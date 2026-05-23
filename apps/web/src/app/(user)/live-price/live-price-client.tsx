@@ -20,14 +20,21 @@ import type {
   InflationResponse,
   PriceAverageRow,
   TrendPoint,
+  PriceAlert,
+  LivePriceResponse,
 } from "@/types/api/market";
+import { deletePriceAlert } from "@/actions/price-alerts";
+import { PriceAlertModal } from "@/components/product-detail/price-alert-modal";
+import { toast } from "sonner";
+import { useQueryState, parseAsInteger } from "nuqs";
+import { useRealtime } from "@/providers/realtime-provider";
 
 const PAGE_SIZE = 10;
 
 type AlertSet = Record<number, boolean>;
 
 type LivePriceClientProps = {
-  averages: PriceAverageRow[];
+  initialLivePrices: LivePriceResponse;
   chartCity: string;
   chartForecasts: ForecastPoint[];
   chartInflation: InflationResponse | null;
@@ -35,8 +42,8 @@ type LivePriceClientProps = {
   chartTrends: TrendPoint[];
   initialError: string | null;
   items: MarketItem[];
-  lastUpdated: string;
   selectedChartItemId: number | null;
+  initialAlerts: PriceAlert[];
 };
 
 function TrendBadge({ pct }: { pct: number | null }) {
@@ -61,7 +68,7 @@ function TrendBadge({ pct }: { pct: number | null }) {
 }
 
 export function LivePriceClient({
-  averages,
+  initialLivePrices,
   chartCity,
   chartForecasts,
   chartInflation,
@@ -69,33 +76,226 @@ export function LivePriceClient({
   chartTrends,
   initialError,
   items,
-  lastUpdated,
   selectedChartItemId,
+  initialAlerts = [],
 }: LivePriceClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All Categories");
-  const [city, setCity] = useState("All Regions");
-  const [sort, setSort] = useState<SortOption>("name");
-  const [page, setPage] = useState(1);
+
+  // Search parameters bound to URL via nuqs
+  const [search, setSearch] = useQueryState("search", {
+    defaultValue: "",
+    shallow: false,
+    clearOnDefault: true,
+  });
+  const [category, setCategory] = useQueryState("category", {
+    defaultValue: "All Categories",
+    shallow: false,
+    clearOnDefault: true,
+  });
+  const [city, setCity] = useQueryState("city", {
+    defaultValue: "All Regions",
+    shallow: false,
+    clearOnDefault: true,
+  });
+  const [sort, setSort] = useQueryState("sort", {
+    defaultValue: "name",
+    shallow: false,
+    clearOnDefault: true,
+  });
+  const [page, setPage] = useQueryState(
+    "page",
+    parseAsInteger.withDefault(1).withOptions({ shallow: false })
+  );
+
   const loading = isPending;
   const error = initialError;
-  const [alerts, setAlerts] = useState<AlertSet>({});
+
+  const [livePrices, setLivePrices] = useState<LivePriceResponse>(initialLivePrices);
+  const [flashingRows, setFlashingRows] = useState<Record<number, "up" | "down" | "neutral">>({});
+
+  // Sync state with incoming props (triggered by searchParams updates)
+  useEffect(() => {
+    setLivePrices(initialLivePrices);
+  }, [initialLivePrices]);
+
+  const [alerts, setAlerts] = useState<Record<number, number>>(() => {
+    const map: Record<number, number> = {};
+    for (const a of initialAlerts) {
+      map[a.item] = a.id;
+    }
+    return map;
+  });
+  const [modalItemId, setModalItemId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const map: Record<number, number> = {};
+    for (const a of initialAlerts) {
+      map[a.item] = a.id;
+    }
+    setAlerts(map);
+  }, [initialAlerts]);
+
   const [selectedItem, setSelectedItem] = useState<number | null>(selectedChartItemId);
+  const { socket } = useRealtime();
+
+  // Real-time market price updates via Socket.io
+  useEffect(() => {
+    if (!socket) return;
+
+    // Join room
+    socket.emit("subscribe:market_prices");
+
+    const handlePriceUpdated = (payload: {
+      item_id: number;
+      item_name: string;
+      city: string;
+      average_price: string;
+      count: number;
+      timestamp: string;
+    }) => {
+      setLivePrices((prev) => {
+        const itemIndex = prev.results.findIndex((r) => r.id === payload.item_id);
+        if (itemIndex === -1) return prev;
+
+        const updatedResults = [...prev.results];
+        const item = updatedResults[itemIndex];
+        if (!item) return prev;
+
+        const parsedPrice = parseFloat(payload.average_price);
+        const oldPrice = item.avgPrice;
+        let direction: "up" | "down" | "neutral" = "neutral";
+
+        const cityFilterMatches = city.toLowerCase() === payload.city.toLowerCase();
+        const isAllRegions = city === "All Regions";
+
+        // Determine flash direction based on price trend direction
+        if (cityFilterMatches && oldPrice !== null && oldPrice !== undefined) {
+          direction = parsedPrice > oldPrice ? "up" : parsedPrice < oldPrice ? "down" : "neutral";
+        } else if (isAllRegions && oldPrice !== null && oldPrice !== undefined) {
+          direction = parsedPrice > oldPrice ? "up" : parsedPrice < oldPrice ? "down" : "neutral";
+        }
+
+        // Trigger flash
+        setFlashingRows((flashes) => ({
+          ...flashes,
+          [payload.item_id]: direction,
+        }));
+
+        // Clear flash after 2 seconds
+        setTimeout(() => {
+          setFlashingRows((flashes) => {
+            const next = { ...flashes };
+            delete next[payload.item_id];
+            return next;
+          });
+        }, 2000);
+
+        // Update item average price and submission count based on active filters
+        let nextAvgPrice = item.avgPrice;
+        let nextSubCount = item.submissionCount;
+
+        if (cityFilterMatches) {
+          nextAvgPrice = parsedPrice;
+          nextSubCount = payload.count;
+        } else if (isAllRegions) {
+          nextSubCount = item.submissionCount + 1;
+          if (oldPrice !== null && oldPrice !== undefined) {
+            nextAvgPrice = (oldPrice * item.submissionCount + parsedPrice) / (item.submissionCount + 1);
+          } else {
+            nextAvgPrice = parsedPrice;
+          }
+        }
+
+        // Update best price and location if the new price is lower or if the updated city is currently the best city
+        let nextBestPrice = item.bestPrice;
+        let nextBestCity = item.bestCity;
+        if (
+          nextBestPrice === null ||
+          nextBestPrice === undefined ||
+          parsedPrice < nextBestPrice ||
+          payload.city.toLowerCase() === nextBestCity?.toLowerCase()
+        ) {
+          nextBestPrice = parsedPrice;
+          nextBestCity = payload.city;
+        }
+
+        updatedResults[itemIndex] = {
+          ...item,
+          avgPrice: nextAvgPrice,
+          submissionCount: nextSubCount,
+          bestPrice: nextBestPrice,
+          bestCity: nextBestCity,
+        };
+
+        // Update avg basket cost in summaries
+        const updatedSummaries = { ...prev.summaries };
+        if (updatedSummaries.avgBasketCost && oldPrice !== null && oldPrice !== undefined && nextAvgPrice !== null && nextAvgPrice !== undefined) {
+          updatedSummaries.avgBasketCost = (updatedSummaries.avgBasketCost * prev.results.length - oldPrice + nextAvgPrice) / prev.results.length;
+        }
+
+        return {
+          ...prev,
+          results: updatedResults,
+          last_updated: payload.timestamp,
+          summaries: updatedSummaries,
+        };
+      });
+    };
+
+    socket.on("price_updated", handlePriceUpdated);
+
+    return () => {
+      socket.off("price_updated", handlePriceUpdated);
+    };
+  }, [socket, city]);
+
   const inflation = chartInflation?.change_percent ?? null;
-  const categories = useMemo(
-    () => Array.from(new Set(items.map((i) => i.category))).sort(),
-    [items],
-  );
-  const cities = useMemo(
-    () => Array.from(new Set(averages.map((a) => a.city).filter(Boolean))).sort(),
-    [averages],
-  );
-  const visibleAverages = useMemo(
-    () => (city === "All Regions" ? averages : averages.filter((a) => a.city === city)),
-    [averages, city],
-  );
+  const categories = livePrices.categories || [];
+  const cities = livePrices.cities || [];
+
+  const handleSearchChange = (val: string) => {
+    startTransition(() => {
+      void setSearch(val || null);
+      void setPage(null);
+    });
+  };
+
+  const handleCategoryChange = (val: string) => {
+    startTransition(() => {
+      void setCategory(val === "All Categories" ? null : val);
+      void setPage(null);
+    });
+  };
+
+  const handleCityChange = (val: string) => {
+    startTransition(() => {
+      void setCity(val === "All Regions" ? null : val);
+      void setPage(null);
+    });
+  };
+
+  const handleSortChange = (val: SortOption) => {
+    startTransition(() => {
+      void setSort(val === "name" ? null : val);
+      void setPage(null);
+    });
+  };
+
+  const handlePageChange = (p: number) => {
+    startTransition(() => {
+      void setPage(p === 1 ? null : p);
+    });
+  };
+
+  const handleResetFilters = () => {
+    startTransition(() => {
+      void setSearch(null);
+      void setCategory(null);
+      void setCity(null);
+      void setPage(null);
+    });
+  };
 
   const refreshData = () => {
     startTransition(() => {
@@ -103,67 +303,43 @@ export function LivePriceClient({
     });
   };
 
-  // Augment items with average price data
-  const enriched = useMemo(() => {
-    const avgByItem = new Map<number, PriceAverageRow[]>();
-    for (const a of visibleAverages) {
-      const arr = avgByItem.get(a.item_id) ?? [];
-      arr.push(a);
-      avgByItem.set(a.item_id, arr);
+  const handleAlertClick = (itemId: number) => {
+    const activeAlertId = alerts[itemId];
+    if (activeAlertId) {
+      startTransition(async () => {
+        const result = await deletePriceAlert(String(activeAlertId));
+        if (result.success) {
+          toast.success("Price alert removed.");
+          setAlerts((prev) => {
+            const next = { ...prev };
+            delete next[itemId];
+            return next;
+          });
+          router.refresh();
+        } else {
+          toast.error(result.message || "Failed to remove price alert");
+        }
+      });
+    } else {
+      setModalItemId(itemId);
     }
-    return items.map((item) => {
-      const rows = avgByItem.get(item.id) ?? [];
-      const avgPrice = rows.length
-        ? rows.reduce((s, r) => s + parseFloat(r.average_price), 0) / rows.length
-        : null;
-      const bestRow = rows.length
-        ? rows.reduce((a, b) => parseFloat(a.average_price) < parseFloat(b.average_price) ? a : b)
-        : null;
-      return { ...item, avgPrice, bestPrice: bestRow ? parseFloat(bestRow.average_price) : null, bestCity: bestRow?.city ?? null, submissionCount: rows.reduce((s, r) => s + r.count, 0) };
-    });
-  }, [items, visibleAverages]);
+  };
 
-  // Filter + sort
-  const filtered = useMemo(() => {
-    let list = enriched;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter((i) => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
-    }
-    if (category !== "All Categories") list = list.filter((i) => i.category === category);
-    switch (sort) {
-      case "avg_price_asc": list = [...list].sort((a, b) => (a.avgPrice ?? Infinity) - (b.avgPrice ?? Infinity)); break;
-      case "avg_price_desc": list = [...list].sort((a, b) => {
-        const aVal = a.avgPrice ?? -Infinity;
-        const bVal = b.avgPrice ?? -Infinity;
-        if (aVal === bVal) return 0;
-        return bVal - aVal;
-      }); break;
-      case "name": list = [...list].sort((a, b) => a.name.localeCompare(b.name)); break;
-      case "trend": list = [...list].sort((a, b) => (b.submissionCount) - (a.submissionCount)); break;
-    }
-    return list;
-  }, [enriched, search, category, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  // Reset page when filters change
-  useEffect(() => { setPage(1); }, [search, category, city, sort]);
-
-  const toggleAlert = (id: number) =>
-    setAlerts((prev) => ({ ...prev, [id]: !prev[id] }));
-
-  // Summary stats
-  const totalItems = filtered.length;
-  const avgBasketCost = visibleAverages.length
-    ? (visibleAverages.reduce((s, a) => s + parseFloat(a.average_price), 0) / visibleAverages.length).toFixed(0)
+  // Summary stats calculations
+  const totalItems = livePrices.pagination.total_records;
+  const avgBasketCost = livePrices.summaries.avgBasketCost
+    ? String(livePrices.summaries.avgBasketCost)
     : null;
-  const mostVolatile = enriched.reduce<typeof enriched[0] | null>((best, i) =>
-    i.submissionCount > (best?.submissionCount ?? -1) ? i : best, null);
-  const bestValue = visibleAverages.length
-    ? visibleAverages.reduce((a, b) => parseFloat(a.average_price) < parseFloat(b.average_price) ? a : b)
+  const mostVolatile = livePrices.summaries.mostVolatileName
+    ? { name: livePrices.summaries.mostVolatileName, submissionCount: livePrices.summaries.mostVolatileCount }
     : null;
+  const bestValue = livePrices.summaries.bestValueCity
+    ? { city: livePrices.summaries.bestValueCity, average_price: String(livePrices.summaries.bestValuePrice) }
+    : null;
+
+  const totalPages = livePrices.pagination.total_pages;
+  const pageItems = livePrices.results;
+  const lastUpdated = livePrices.last_updated;
 
   return (
     <div className="pb-12 lg:pb-20">
@@ -255,10 +431,10 @@ export function LivePriceClient({
 
       {/* Filter Bar */}
       <MarketFilterBar
-        search={search} onSearch={setSearch}
-        category={category} onCategory={setCategory}
-        city={city} onCity={setCity}
-        sort={sort} onSort={setSort}
+        search={search} onSearch={handleSearchChange}
+        category={category} onCategory={handleCategoryChange}
+        city={city} onCity={handleCityChange}
+        sort={(sort as SortOption) || "name"} onSort={handleSortChange}
         categories={categories} cities={cities}
       />
 
@@ -276,7 +452,7 @@ export function LivePriceClient({
             </div>
             <Button 
               variant="outline" 
-              onClick={() => { setSearch(""); setCategory("All Categories"); setCity("All Regions"); }} 
+              onClick={handleResetFilters} 
               className="mt-2"
             >
               Reset all filters
@@ -298,12 +474,24 @@ export function LivePriceClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#e5e7eb] dark:divide-[#2a3140]">
-                {pageItems.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={`group hover:bg-[#f0f9ff] dark:hover:bg-[#1f2937]/50 transition-colors cursor-pointer ${selectedItem === row.id ? "bg-blue-50/60 dark:bg-blue-900/10" : ""}`}
-                    onClick={() => setSelectedItem(row.id)}
-                  >
+                {pageItems.map((row) => {
+                  const isSelected = selectedItem === row.id;
+                  const flashStatus = flashingRows[row.id];
+                  const flashClass = flashStatus === "up"
+                    ? "bg-red-50 dark:bg-red-950/30 text-red-900 dark:text-red-100 animate-pulse"
+                    : flashStatus === "down"
+                    ? "bg-green-50 dark:bg-green-950/30 text-green-900 dark:text-green-100 animate-pulse"
+                    : flashStatus === "neutral"
+                    ? "bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 animate-pulse"
+                    : isSelected
+                    ? "bg-blue-50/60 dark:bg-blue-900/10"
+                    : "";
+                  return (
+                    <tr
+                      key={row.id}
+                      className={`group hover:bg-[#f0f9ff] dark:hover:bg-[#1f2937]/50 transition-all duration-300 cursor-pointer ${flashClass}`}
+                      onClick={() => setSelectedItem(row.id)}
+                    >
                     <td className="py-4 pl-6 pr-4">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-[#135bec]/10 to-[#135bec]/20 flex items-center justify-center shrink-0 text-[#135bec] font-bold text-sm">
@@ -317,10 +505,10 @@ export function LivePriceClient({
                     </td>
                     <td className="py-4 px-4 text-sm text-[#616f89]">{row.unit}</td>
                     <td className="py-4 px-4 text-sm font-medium text-[#111318] dark:text-white tabular-nums">
-                      {row.avgPrice !== null ? `${row.avgPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB` : <span className="text-[#616f89] text-xs">No data</span>}
+                      {row.avgPrice !== null && row.avgPrice !== undefined ? `${row.avgPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB` : <span className="text-[#616f89] text-xs">No data</span>}
                     </td>
                     <td className="py-4 px-4">
-                      {row.bestPrice !== null ? (
+                      {row.bestPrice !== null && row.bestPrice !== undefined ? (
                         <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/30 text-[#135bec] text-sm font-bold tabular-nums border border-blue-100 dark:border-blue-800">
                           {row.bestPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB
                         </span>
@@ -344,7 +532,7 @@ export function LivePriceClient({
                         <button
                           type="button"
                           title={alerts[row.id] ? "Remove alert" : "Set price alert"}
-                          onClick={() => toggleAlert(row.id)}
+                          onClick={() => handleAlertClick(row.id)}
                           className={`p-2 rounded-full transition-colors ${alerts[row.id] ? "text-[#135bec] bg-blue-50 dark:bg-blue-900/20" : "text-[#616f89] hover:text-[#135bec] hover:bg-gray-100 dark:hover:bg-gray-800"}`}
                         >
                           {alerts[row.id] ? <BellOff className="size-4" /> : <Bell className="size-4" />}
@@ -366,25 +554,26 @@ export function LivePriceClient({
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+                })}
               </tbody>
             </table>
           </div>
         )}
 
         {/* Pagination */}
-        {!loading && filtered.length > 0 && (
+        {!loading && pageItems.length > 0 && (
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 bg-[#f9fafb] dark:bg-[#252b38] border-t border-[#e5e7eb] dark:border-[#2a3140]">
             <p className="text-sm text-[#616f89]">
-              Showing <span className="font-semibold text-[#111318] dark:text-white">{(page - 1) * PAGE_SIZE + 1}</span>–
-              <span className="font-semibold text-[#111318] dark:text-white">{Math.min(page * PAGE_SIZE, filtered.length)}</span> of{" "}
-              <span className="font-semibold text-[#111318] dark:text-white">{filtered.length}</span> items
+              Showing <span className="font-semibold text-[#111318] dark:text-white">{(page - 1) * livePrices.pagination.page_size + 1}</span>–
+              <span className="font-semibold text-[#111318] dark:text-white">{Math.min((page - 1) * livePrices.pagination.page_size + pageItems.length, totalItems)}</span> of{" "}
+              <span className="font-semibold text-[#111318] dark:text-white">{totalItems}</span> items
             </p>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline" size="sm"
                 disabled={page === 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => handlePageChange(Math.max(1, page - 1))}
               >
                 Previous
               </Button>
@@ -394,7 +583,7 @@ export function LivePriceClient({
                   return (
                     <button
                       key={p}
-                      onClick={() => setPage(p)}
+                      onClick={() => handlePageChange(p)}
                       className={`h-8 w-8 rounded-lg text-sm font-medium transition-colors ${p === page ? "bg-[#135bec] text-white" : "text-[#616f89] hover:bg-[#f0f2f4] dark:hover:bg-[#374151]"}`}
                     >
                       {p}
@@ -405,7 +594,7 @@ export function LivePriceClient({
               <Button
                 variant="outline" size="sm"
                 disabled={page === totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
               >
                 Next
               </Button>
@@ -424,6 +613,18 @@ export function LivePriceClient({
           <Link href="/market/submit">Submit a Price <ArrowUpRight className="size-4 ml-1" /></Link>
         </Button>
       </div>
+
+      {modalItemId !== null && (
+        <PriceAlertModal
+          itemId={String(modalItemId)}
+          isOpen={modalItemId !== null}
+          city={city !== "All Regions" ? city : undefined}
+          onClose={() => {
+            setModalItemId(null);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

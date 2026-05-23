@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Star, MapPin, ExternalLink } from "lucide-react";
 import { Button } from "@repo/ui/components/button";
 import type { VendorPriceRow } from "@/types/api/market";
@@ -46,8 +47,9 @@ export function VendorComparisonTable({ vendors }: { vendors: VendorPriceRow[] }
             {vendors.map((vendor) => {
               const priceNum = parseFloat(vendor.price);
               const isLowest = priceNum === lowestPrice;
-              // Mock stock level for visual effect
-              const stockLevel = Math.max(30, Math.min(100, Math.floor(priceNum % 100)));
+              const stock = vendor.stock_count ?? 0;
+              // Scale bar representation, capping at 100 units for 100% fullness
+              const stockPercent = Math.min(100, Math.max(0, stock));
               
               return (
               <tr key={vendor.id} className="hover:bg-slate-50 dark:hover:bg-[#252b38]/50 transition-colors group">
@@ -75,12 +77,14 @@ export function VendorComparisonTable({ vendors }: { vendors: VendorPriceRow[] }
                 <td className="py-6 px-4">
                   <div className="w-32">
                     <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-[10px] font-bold text-[#616f89] truncate">In Stock</span>
+                      <span className="text-[10px] font-bold text-[#616f89] truncate">
+                        {stock > 0 ? `${stock} units in stock` : "Out of Stock"}
+                      </span>
                     </div>
                     <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div 
-                        className={`h-full rounded-full transition-all duration-1000 ${stockLevel > 50 ? 'bg-[#135bec]' : 'bg-orange-500'}`}
-                        style={{ width: `${stockLevel}%` }}
+                        className={`h-full rounded-full transition-all duration-1000 ${stock > 10 ? 'bg-[#135bec]' : 'bg-orange-500'}`}
+                        style={{ width: `${stockPercent}%` }}
                       />
                     </div>
                   </div>
@@ -102,8 +106,10 @@ export function VendorComparisonTable({ vendors }: { vendors: VendorPriceRow[] }
                   </div>
                 </td>
                 <td className="py-6 pr-8 pl-4 text-right">
-                  <Button variant="ghost" size="sm" className="text-[#616f89] hover:text-[#135bec] hover:bg-blue-50 font-bold text-xs h-8">
-                    View <ExternalLink className="size-3 ml-1.5" />
+                  <Button variant="ghost" size="sm" className="text-[#616f89] hover:text-[#135bec] hover:bg-blue-50 font-bold text-xs h-8" asChild>
+                    <Link href={`/shop/vendors/${vendor.vendor_id}`}>
+                      View <ExternalLink className="size-3 ml-1.5" />
+                    </Link>
                   </Button>
                 </td>
               </tr>
@@ -114,9 +120,9 @@ export function VendorComparisonTable({ vendors }: { vendors: VendorPriceRow[] }
 
       {vendors.length > 3 && (
         <div className="p-4 bg-slate-50 dark:bg-[#252b38]/30 text-center border-t border-[#e5e7eb] dark:border-[#2a3140]">
-          <button className="text-xs font-bold text-[#135bec] hover:underline uppercase tracking-widest">
+          <Link href="/shop/vendors" className="text-xs font-bold text-[#135bec] hover:underline uppercase tracking-widest">
             View {vendors.length - 3} more vendors
-          </button>
+          </Link>
         </div>
       )}
     </div>

@@ -24,9 +24,10 @@ interface PriceAlertModalProps {
   itemId: string;
   isOpen: boolean;
   onClose: () => void;
+  city?: string;
 }
 
-export function PriceAlertModal({ itemId, isOpen, onClose }: PriceAlertModalProps) {
+export function PriceAlertModal({ itemId, isOpen, onClose, city }: PriceAlertModalProps) {
   const [isPending, startTransition] = useTransition();
 
   const form = useForm<AlertFormData>({
@@ -34,12 +35,13 @@ export function PriceAlertModal({ itemId, isOpen, onClose }: PriceAlertModalProp
     defaultValues: {
       itemId,
       targetPrice: "" as unknown as number,
+      city: city && city !== "All Regions" ? city : undefined,
     },
   });
 
   const onSubmit = (data: AlertFormData) => {
     startTransition(async () => {
-      const result = await createPriceAlert(data.itemId, data.targetPrice);
+      const result = await createPriceAlert(data.itemId, data.targetPrice, data.city);
       if (result.success) {
         toast.success(`Alert set! We'll notify you when price drops below ${data.targetPrice} ETB.`);
         onClose();

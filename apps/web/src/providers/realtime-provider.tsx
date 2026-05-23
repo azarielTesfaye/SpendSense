@@ -44,15 +44,18 @@ type RealtimeContextValue = {
   /** Increments every time any real-time event arrives — use as a `useEffect` dep to refetch. */
   eventVersion: number;
   /** Last event payload received (for ad-hoc handlers). */
-  lastEvent: { name: RealtimeEventName; payload: unknown } | null;
-  /** Whether the socket has authenticated successfully. */
+  lastEvent: { name: string; payload: unknown } | null;
+  /** Whether the socket is connected. */
   connected: boolean;
+  /** The socket client instance. */
+  socket: Socket | null;
 };
 
 const RealtimeContext = createContext<RealtimeContextValue>({
   eventVersion: 0,
   lastEvent: null,
   connected: false,
+  socket: null,
 });
 
 export function useRealtime(): RealtimeContextValue {
@@ -226,14 +229,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [lastEvent, setLastEvent] =
     useState<RealtimeContextValue["lastEvent"]>(null);
   const [connected, setConnected] = useState(false);
+  const [socketInstance, setSocketInstance] = useState<Socket | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    if (status !== "authenticated" || !accessToken) {
-      setConnected(false);
-      return;
-    }
-
     const socket: Socket = io(REALTIME_URL, {
       path: "/socket.io",
       transports: ["websocket", "polling"],
@@ -241,8 +240,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       reconnectionAttempts: 10,
     });
     socketRef.current = socket;
+    setSocketInstance(socket);
+    setConnected(socket.connected);
 
-    socket.emit("authenticate", { token: accessToken });
+    if (status === "authenticated" && accessToken) {
+      socket.emit("authenticate", { token: accessToken });
+    }
 
     const onEvent = (name: RealtimeEventName) => (data: unknown) => {
       setLastEvent({ name, payload: data });
@@ -250,13 +253,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       showNotificationToast(name, data);
     };
 
+    socket.on("connect", () => setConnected(true));
+    socket.on("disconnect", () => setConnected(false));
     socket.on("authenticated", () => {
-      setConnected(true);
       socket.emit("subscribe:notifications");
     });
-    socket.on("disconnect", () => setConnected(false));
     socket.on("auth_error", (e: { detail?: string }) => {
-      setConnected(false);
       // Silently handle temporary auth errors (such as during token refresh or initial load)
       console.warn("Realtime auth error:", e?.detail);
     });
@@ -270,12 +272,13 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       socket.removeAllListeners();
       socket.close();
       socketRef.current = null;
+      setSocketInstance(null);
     };
   }, [accessToken, status]);
 
   const value = useMemo<RealtimeContextValue>(
-    () => ({ eventVersion, lastEvent, connected }),
-    [eventVersion, lastEvent, connected]
+    () => ({ eventVersion, lastEvent, connected, socket: socketInstance }),
+    [eventVersion, lastEvent, connected, socketInstance]
   );
 
   return (
