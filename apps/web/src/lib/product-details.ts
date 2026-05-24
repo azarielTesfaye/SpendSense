@@ -94,7 +94,7 @@ export async function getProductDetail(itemId: string): Promise<ProductDetailRes
   }
 
   // ItemSerializer returns a relative image path; build a full URL
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
   const imageUrls = item.image
     ? [item.image.startsWith('http') ? item.image : `${API_BASE}/media/${item.image}`]
     : [];

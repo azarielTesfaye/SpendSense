@@ -47,3 +47,47 @@ export async function rejectVendor(vendorId: string, reason: string): Promise<Ac
     return { success: false, message: "An unexpected error occurred" };
   }
 }
+
+export async function suspendVendor(vendorId: string, reason: string): Promise<ActionResult> {
+  try {
+    await apiClient({
+      method: "POST",
+      endpoint: `/api/ecommerce/admin/vendors/${vendorId}/suspend/`,
+      body: { reason },
+    });
+
+    revalidateTag("admin-vendors", "max");
+    revalidateTag("admin-dashboard", "max");
+    revalidateTag("profile", "max");
+    revalidateTag("vendors", "max");
+
+    return { success: true, data: null };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return { success: false, message: error.message };
+    }
+    return { success: false, message: "An unexpected error occurred" };
+  }
+}
+
+export async function restoreVendor(vendorId: string, reason: string): Promise<ActionResult> {
+  try {
+    await apiClient({
+      method: "POST",
+      endpoint: `/api/ecommerce/admin/vendors/${vendorId}/restore/`,
+      body: { reason },
+    });
+
+    revalidateTag("admin-vendors", "max");
+    revalidateTag("admin-dashboard", "max");
+    revalidateTag("profile", "max");
+    revalidateTag("vendors", "max");
+
+    return { success: true, data: null };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return { success: false, message: error.message };
+    }
+    return { success: false, message: "An unexpected error occurred" };
+  }
+}

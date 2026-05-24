@@ -4,7 +4,25 @@ import { AUTH_COOKIE_NAME } from "./auth-constants";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "http://localhost:8000";
+  "http://127.0.0.1:8000";
+
+function getApiBaseUrls() {
+  const bases = [API_BASE_URL];
+
+  if (API_BASE_URL.includes("127.0.0.1")) {
+    bases.push(API_BASE_URL.replace("127.0.0.1", "localhost"));
+  }
+
+  if (API_BASE_URL.includes("localhost")) {
+    bases.push(API_BASE_URL.replace("localhost", "127.0.0.1"));
+  }
+
+  return [...new Set(bases)];
+}
+
+function isNetworkError(error: unknown) {
+  return error instanceof TypeError;
+}
 
 type NextFetchOptions = {
   revalidate?: number | false;
@@ -96,18 +114,17 @@ export async function apiClient<T>(config: ApiClientConfig): Promise<T> {
     }
   }
 
-  let baseUrlAndEndpoint = `${API_BASE_URL}${endpoint}`;
-  if (!baseUrlAndEndpoint.endsWith('/')) {
-    baseUrlAndEndpoint += '/';
-  }
-  const url = `${baseUrlAndEndpoint}${searchParams.toString() ? `?${searchParams}` : ""}`;
+  const baseUrls = getApiBaseUrls();
+  const requestPath = endpoint.endsWith("/") ? endpoint : `${endpoint}/`;
+  const requestQuery = searchParams.toString() ? `?${searchParams}` : "";
+  const requestUrls = baseUrls.map((baseUrl) => `${baseUrl}${requestPath}${requestQuery}`);
 
   if (process.env.NODE_ENV === "development") {
     const bodyLog =
       body instanceof FormData
         ? Object.fromEntries(body.entries())
         : body;
-    console.log("Prepared url:", url, "Method:", method, "Body:", bodyLog);
+    console.log("Prepared url:", requestUrls[0], "Method:", method, "Body:", bodyLog);
   }
   
   const headers = normalizeHeaders(fetchOptions?.headers);
@@ -123,14 +140,33 @@ export async function apiClient<T>(config: ApiClientConfig): Promise<T> {
   const mergedHeaders = { ...headers, ...(authHeader ?? {}) };
   const finalFetchOptions = { ...fetchOptions, headers: mergedHeaders };
 
-  const response = await fetch(url, {
-    method,
-    body: requestBody,
-    credentials: "include",
-    ...finalFetchOptions,
-    ...(next ? { next } : {}),
-    ...(cache ? { cache } : {}),
-  });
+  let response: Response | null = null;
+  let lastNetworkError: unknown = null;
+
+  for (const requestUrl of requestUrls) {
+    try {
+      response = await fetch(requestUrl, {
+        method,
+        body: requestBody,
+        credentials: "include",
+        ...finalFetchOptions,
+        ...(next ? { next } : {}),
+        ...(cache ? { cache } : {}),
+      });
+      break;
+    } catch (error) {
+      lastNetworkError = error;
+      if (!isNetworkError(error) || requestUrl === requestUrls[requestUrls.length - 1]) {
+        throw error;
+      }
+    }
+  }
+
+  if (!response) {
+    throw lastNetworkError instanceof Error
+      ? lastNetworkError
+      : new TypeError("fetch failed");
+  }
 
   if (response.status === 204 || response.status === 205) {
     return undefined as T;
@@ -151,8 +187,8 @@ export async function apiClient<T>(config: ApiClientConfig): Promise<T> {
     }
 
     const message = getErrorMessage(parsedError, response.status, contentType);
-    console.log({contentType})
-    console.log("Prepared failed url:", url, "Method:", method);
+    console.log({contentType});
+    console.log("Prepared failed url:", requestUrls[0], "Method:", method);
 
     throw new ApiError(message, response.status, parsedError);
   }

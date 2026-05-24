@@ -41,7 +41,7 @@ type EditableImage =
 function buildImageUrl(src: string | null | undefined) {
   if (!src) return null;
   if (src.startsWith("http") || src.startsWith("data:")) return src;
-  return `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${src}`;
+  return `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}${src}`;
 }
 
 function getInitialImages(product: VendorPriceResponse): EditableImage[] {

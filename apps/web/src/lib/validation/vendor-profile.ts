@@ -9,7 +9,7 @@ export const vendorProfileSchema = z.object({
   address: z.string(),
   contact_phone: z.string(),
   is_verified: z.boolean(),
-  verification_status: z.enum(['unrequested', 'requested', 'pending', 'verified', 'rejected']),
+  verification_status: z.enum(['unrequested', 'requested', 'pending', 'verified', 'rejected', 'suspended']),
   business_license: z.string().nullable(),
   business_license_url: z.string().nullable().optional(),
   tin_number: z.string(),

@@ -4,7 +4,7 @@ import { apiClient } from "@/lib/api";
 
 interface VendorStatus {
   is_verified: boolean;
-  verification_status: 'unrequested' | 'requested' | 'pending' | 'verified' | 'rejected';
+  verification_status: 'unrequested' | 'requested' | 'pending' | 'verified' | 'rejected' | 'suspended';
   shop_name?: string;
   verification_rejection_reason?: string | null;
 }

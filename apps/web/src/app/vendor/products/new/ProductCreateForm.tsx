@@ -317,7 +317,7 @@ export default function ProductCreateForm({
                           src={
                             selectedItem.image.startsWith("http")
                               ? selectedItem.image
-                              : `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${selectedItem.image}`
+                              : `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}${selectedItem.image}`
                           }
                           alt={selectedItem.name}
                           className="h-full w-full object-cover"
