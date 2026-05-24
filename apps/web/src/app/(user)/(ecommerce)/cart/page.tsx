@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Suspense } from "react";
 import { getCart } from "@/actions/ecommerce";
 import { AlertTriangle } from "lucide-react";

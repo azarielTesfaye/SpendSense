@@ -33,6 +33,7 @@ export default function OrderDetailsPage() {
   useEffect(() => {
     let active = true;
 
+
     async function loadOrder() {
       if (!params?.id) {
         setLoading(false);
@@ -57,7 +58,8 @@ export default function OrderDetailsPage() {
         setOrder(purchase);
         setVendor(vendorData);
         setVendorListings(listingData);
-      } catch {
+      } catch(error) {
+        console.log(error);
         if (active) {
           setError("Unable to load order details.");
         }

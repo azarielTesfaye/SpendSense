@@ -37,11 +37,6 @@ module.exports = {
       "error",
       {
         "**/*/": "KEBAB_CASE",
-
-        // ignore common generated folders
-        "!**/node_modules/": null,
-        "!**/.next/": null,
-        "!**/dist/": null,
       },
     ],
   },

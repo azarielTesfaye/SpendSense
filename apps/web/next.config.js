@@ -1,9 +1,6 @@
 const path = require("path");
 
 module.exports = {
-  serverActions: {
-    bodySizeLimit: '15mb',
-  },
   images: {
     remotePatterns: [
       {

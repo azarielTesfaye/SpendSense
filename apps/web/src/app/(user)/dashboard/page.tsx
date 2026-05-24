@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { markNotificationRead } from "@/actions/notifications";
 import { apiClient } from "@/lib/api";
 import { Button } from "@repo/ui/components/button";

@@ -11,7 +11,7 @@ import logging
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Avg
+from django.db.models import Avg, Sum, Count
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -56,7 +56,38 @@ def on_submission_status_change(sender, instance, **kwargs):
             },
         )
         # After approval, check price alerts.
-        _check_price_alerts_for_item(instance.item, instance.city)
+        _check_price_alerts_for_item(instance.item, instance.city, approved_submission=instance)
+
+        # Broadcast the updated price to the market_prices room
+        try:
+            avg_data = PriceSubmission.objects.filter(
+                item=instance.item,
+                city__iexact=instance.city,
+                status='approved'
+            ).exclude(pk=instance.pk).aggregate(s=Sum('price_value'), cnt=Count('id'))
+
+            existing_sum = avg_data['s'] or Decimal('0.0')
+            existing_cnt = avg_data['cnt'] or 0
+
+            new_sum = existing_sum + instance.price_value
+            new_cnt = existing_cnt + 1
+            new_avg = new_sum / new_cnt
+
+            from users.signals import emit_realtime_broadcast
+            emit_realtime_broadcast(
+                room='market_prices',
+                event='price_updated',
+                payload={
+                    'item_id': instance.item_id,
+                    'item_name': instance.item.name,
+                    'city': instance.city,
+                    'average_price': str(round(new_avg, 2)),
+                    'count': new_cnt,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+        except Exception as exc:
+            logger.warning("Failed to emit realtime price update: %s", exc)
 
     # --- Rejected ---
     elif instance.status == 'rejected':
@@ -79,7 +110,7 @@ def on_submission_status_change(sender, instance, **kwargs):
         )
 
 
-def _check_price_alerts_for_item(item, city: str):
+def _check_price_alerts_for_item(item, city: str, approved_submission=None):
     """Check all active price alerts for the given item and notify if target is met."""
     # Current average price for the item (and optionally city).
     avg_qs = PriceSubmission.objects.filter(
@@ -87,12 +118,27 @@ def _check_price_alerts_for_item(item, city: str):
         status='approved',
         date_observed__gte=date.today() - timedelta(days=30),
     )
+    if approved_submission:
+        avg_qs = avg_qs.exclude(pk=approved_submission.pk)
+
     if city:
-        city_avg = avg_qs.filter(city__iexact=city).aggregate(a=Avg('price_value'))['a']
+        city_agg = avg_qs.filter(city__iexact=city).aggregate(s=Sum('price_value'), c=Count('id'))
+        city_sum = city_agg['s'] or Decimal('0.0')
+        city_cnt = city_agg['c'] or 0
+        if approved_submission and approved_submission.city.lower() == city.lower() and approved_submission.date_observed >= date.today() - timedelta(days=30):
+            city_sum += approved_submission.price_value
+            city_cnt += 1
+        city_avg = city_sum / city_cnt if city_cnt > 0 else None
     else:
         city_avg = None
 
-    national_avg = avg_qs.aggregate(a=Avg('price_value'))['a']
+    nat_agg = avg_qs.aggregate(s=Sum('price_value'), c=Count('id'))
+    nat_sum = nat_agg['s'] or Decimal('0.0')
+    nat_cnt = nat_agg['c'] or 0
+    if approved_submission and approved_submission.date_observed >= date.today() - timedelta(days=30):
+        nat_sum += approved_submission.price_value
+        nat_cnt += 1
+    national_avg = nat_sum / nat_cnt if nat_cnt > 0 else None
 
     if national_avg is None and city_avg is None:
         return
@@ -135,3 +181,4 @@ def _check_price_alerts_for_item(item, city: str):
             alert.is_active = False
             alert.triggered_at = timezone.now()
             alert.save(update_fields=['is_active', 'triggered_at'])
+

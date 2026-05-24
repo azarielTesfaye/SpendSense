@@ -54,15 +54,15 @@ const navItems = [
     icon: TrendingUp,
     label: "Live Prices",
     href: "/live-price",
-    matchPaths: [ "/live-prices", "/price-trends"],
+    matchPaths: [ "/live-price", "/price-trends"],
   },
 
-  {
-    icon: Bell,
-    label: "Notifications",
-    href: "/notifications",
-    matchPaths: ["/notifications"],
-  },
+  // {
+  //   icon: Bell,
+  //   label: "Notifications",
+  //   href: "/notifications",
+  //   matchPaths: ["/notifications"],
+  // },
   // {
   //   icon: Settings,
   //   label: "Settings",
@@ -125,6 +125,7 @@ interface SidebarProps {
   mobile?: boolean;
   onClose?: () => void;
 }
+
 
 export function Sidebar({ mobile, onClose }: SidebarProps) {
   const pathname = usePathname();

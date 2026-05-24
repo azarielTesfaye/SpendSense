@@ -1,20 +1,33 @@
 "use client";
 
-import React, { FormEvent, useState } from "react";
-import type { VendorProfile } from "../_lib/vendor-api";
-import { updateCurrentUserProfile } from "../_lib/vendor-api";
-import { updateProfile, updateVendorProfile } from "@/actions/vendor/updateProfile";
+import React, { FormEvent, useState, lazy, Suspense } from "react";
+import type { VendorProfile, BusinessHourEntry } from "../_lib/vendor-api";
+import { updateProfile } from "@/actions/vendor/updateProfile";
+import { BusinessHoursEditor } from "@/components/shared/business-hours-editor";
+
+const LocationPicker = lazy(() => import("@/components/shared/location-picker"));
+
+const CITY_OPTIONS = ["Addis Ababa", "Adama"] as const;
 
 export default function VendorProfileClient({ initialProfile }: { initialProfile: VendorProfile | null }) {
   const [profile, setProfile] = useState<VendorProfile | null>(initialProfile);
   const [vendorId, setVendorId] = useState<string>(typeof window !== "undefined" ? localStorage.getItem("spendsense_vendor_id") || "" : "");
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(initialProfile?.image_url || initialProfile?.image || null);
+
+  // Business hours state
+  const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(
+    initialProfile?.business_hours ?? []
+  );
+
+  // Location state
+  const [latitude, setLatitude] = useState<number | undefined>(initialProfile?.latitude);
+  const [longitude, setLongitude] = useState<number | undefined>(initialProfile?.longitude);
 
   async function onSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -25,9 +38,8 @@ export default function VendorProfileClient({ initialProfile }: { initialProfile
     setError("");
 
     try {
-      // Create a unified FormData to handle both user and vendor info (including files)
       const formData = new FormData();
-      
+
       // User fields
       formData.append("full_name", profile.full_name || "");
       formData.append("phone", profile.phone || "");
@@ -35,24 +47,31 @@ export default function VendorProfileClient({ initialProfile }: { initialProfile
       if (profile.income_bracket) formData.append("income_bracket", profile.income_bracket);
       if (profile.household_size) formData.append("household_size", String(profile.household_size));
 
-      // Vendor fields (supported by the updated backend)
+      // Vendor fields
       if (profile.shop_name) formData.append("shop_name", profile.shop_name);
       if (profile.address) formData.append("address", profile.address);
       if (profile.contact_phone) formData.append("contact_phone", profile.contact_phone);
       if (imageFile) formData.append("image", imageFile);
 
+      // New fields
+      if (latitude != null) formData.append("latitude", String(latitude));
+      if (longitude != null) formData.append("longitude", String(longitude));
+      if (businessHours.length > 0) {
+        formData.append("business_hours", JSON.stringify(businessHours));
+      }
+
       const result = await updateProfile(formData);
 
       if (result.success) {
         setProfile(result.data);
-        
-        // Persist vendor_id if we got one in vendor_info
-        const vendorId = result.data.vendor_info?.id || result.data.vendor_info?.vendor_id;
-        if (vendorId) {
-          localStorage.setItem("spendsense_vendor_id", vendorId);
-          setVendorId(vendorId);
+
+        const vid = result.data.vendor_info?.id || result.data.vendor_info?.vendor_id;
+        if (vid) {
+          const vendorIdStr = String(vid);
+          localStorage.setItem("spendsense_vendor_id", vendorIdStr);
+          setVendorId(vendorIdStr);
         }
-        
+
         setMessage("Profile and business details updated successfully.");
       } else {
         setError(result.message);
@@ -119,6 +138,7 @@ export default function VendorProfileClient({ initialProfile }: { initialProfile
 
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 space-y-6 lg:col-span-8">
+          {/* Basic Info Section */}
           <section className="rounded-xl bg-white p-8 shadow-sm">
             <div className="mb-8 flex items-center justify-between">
               <h3 className="text-lg font-bold">Business Profile Details</h3>
@@ -149,9 +169,24 @@ export default function VendorProfileClient({ initialProfile }: { initialProfile
               <div className="col-span-2 md:col-span-1">
                 <label className="mb-2 block text-xs font-bold uppercase text-slate-500">Business Category</label>
                 <select className="w-full rounded-lg border-none bg-[#f0f2f4] px-4 py-3 text-sm focus:ring-2 focus:ring-[#135bec]/20">
-                  <option>Logistics & Supply Chain</option>
+                  <option>Logistics &amp; Supply Chain</option>
                   <option>Manufacturing</option>
                   <option>Retail Distribution</option>
+                </select>
+              </div>
+
+              {/* City Select */}
+              <div className="col-span-2 md:col-span-1">
+                <label className="mb-2 block text-xs font-bold uppercase text-slate-500">City</label>
+                <select
+                  className="w-full rounded-lg border-none bg-[#f0f2f4] px-4 py-3 text-sm focus:ring-2 focus:ring-[#135bec]/20"
+                  value={profile?.city || ""}
+                  onChange={(event) => setProfile((prev) => (prev ? { ...prev, city: event.target.value } : prev))}
+                >
+                  <option value="">Select City</option>
+                  {CITY_OPTIONS.map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
                 </select>
               </div>
 
@@ -175,17 +210,43 @@ export default function VendorProfileClient({ initialProfile }: { initialProfile
                   value={profile?.contact_phone || profile?.phone || ""}
                 />
               </div>
-
-              <div className="col-span-1">
-                <label className="mb-2 block text-xs font-bold uppercase text-slate-500">City</label>
-                <input
-                  className="w-full rounded-lg border-none bg-[#f0f2f4] px-4 py-3 text-sm focus:ring-2 focus:ring-[#135bec]/20"
-                  onChange={(event) => setProfile((prev) => (prev ? { ...prev, city: event.target.value } : prev))}
-                  type="text"
-                  value={profile?.city || ""}
-                />
-              </div>
             </div>
+          </section>
+
+          {/* Business Hours Section */}
+          <section className="rounded-xl bg-white p-8 shadow-sm">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Business Hours</h3>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#135bec]">Schedule</span>
+            </div>
+            <BusinessHoursEditor value={businessHours} onChange={setBusinessHours} />
+          </section>
+
+          {/* Location Section */}
+          <section className="rounded-xl bg-white p-8 shadow-sm">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Business Location</h3>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#135bec]">Map</span>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">
+              Click on the map, drag the marker, or use your device location to set your shop&apos;s coordinates. You can also enter latitude and longitude manually.
+            </p>
+            <Suspense
+              fallback={
+                <div className="h-[280px] rounded-xl bg-[#f0f2f4] flex items-center justify-center text-sm text-slate-400 animate-pulse">
+                  Loading map...
+                </div>
+              }
+            >
+              <LocationPicker
+                latitude={latitude}
+                longitude={longitude}
+                onChange={(lat, lng) => {
+                  setLatitude(lat);
+                  setLongitude(lng);
+                }}
+              />
+            </Suspense>
           </section>
         </div>
 

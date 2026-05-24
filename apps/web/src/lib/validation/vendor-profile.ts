@@ -17,6 +17,11 @@ export const vendorProfileSchema = z.object({
   rating_count: z.coerce.number(),
   latitude: z.coerce.number().nullable(),
   longitude: z.coerce.number().nullable(),
+  business_hours: z.array(z.object({
+    day: z.string(),
+    start: z.string(),
+    end: z.string(),
+  })).nullable().optional(),
   image: z.string().nullable(),
   image_url: z.string().nullable().optional(),
   theme_image: z.string().nullable(),

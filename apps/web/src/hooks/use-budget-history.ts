@@ -77,7 +77,8 @@ export function useBudgetHistory() {
       );
 
       setRows(summaries.sort((a, b) => b.year - a.year || b.month - a.month));
-    } catch {
+    } catch (e) {
+      console.log(e);
       setError("Unable to load budget history right now.");
     } finally {
       setLoading(false);

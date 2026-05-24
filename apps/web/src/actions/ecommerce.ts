@@ -8,6 +8,8 @@ import {
   normalizeCart,
   type Cart,
   type Purchase,
+  type PaginatedResponse,
+  type PurchaseKpiSummary,
   type Recommendation,
   type Review,
   type Vendor,
@@ -269,7 +271,7 @@ export async function registerVendor(
       cache: "no-store",
     });
 
-    revalidateTag(CACHE_TAGS.vendors);
+    revalidateTag(CACHE_TAGS.vendors, "max");
     revalidatePath("/shop/vendors");
 
     return response;
@@ -315,8 +317,8 @@ export async function createVendorListing(
       cache: "no-store",
     });
 
-    revalidateTag(CACHE_TAGS.listings);
-    revalidateTag(CACHE_TAGS.recommendations);
+    revalidateTag(CACHE_TAGS.listings, "max");
+    revalidateTag(CACHE_TAGS.recommendations, "max");
     revalidatePath(`/shop/vendors/${payload.vendor_id}`);
     revalidatePath("/shop");
 
@@ -358,8 +360,8 @@ export async function createReview(input: ReviewCreateSchema): Promise<Review> {
       cache: "no-store",
     });
 
-    revalidateTag(CACHE_TAGS.reviews);
-    revalidateTag(CACHE_TAGS.vendors);
+    revalidateTag(CACHE_TAGS.reviews, "max");
+    revalidateTag(CACHE_TAGS.vendors, "max");
     revalidatePath(`/shop/vendors/${payload.vendor_id}`);
 
     return response;
@@ -423,7 +425,7 @@ export async function addToCart(input: AddToCartSchema): Promise<Cart> {
 
     await writeCartToCookie(nextCart);
 
-    revalidateTag(CACHE_TAGS.cart);
+    revalidateTag(CACHE_TAGS.cart, "max");
     revalidatePath("/cart");
     revalidatePath("/checkout");
 
@@ -453,7 +455,7 @@ export async function removeBulkFromCart(listingIdsTarget: number[]): Promise<Ca
 
     await writeCartToCookie(nextCart);
 
-    revalidateTag(CACHE_TAGS.cart);
+    revalidateTag(CACHE_TAGS.cart, "max");
     revalidatePath("/cart");
 
     return nextCart;
@@ -473,7 +475,7 @@ export async function checkout(input: CheckoutSchema): Promise<Purchase> {
       cache: "no-store",
     });
 
-    revalidateTag(CACHE_TAGS.purchases);
+    revalidateTag(CACHE_TAGS.purchases, "max");
     revalidatePath("/cart");
     revalidatePath("/checkout");
     revalidatePath("/orders");
@@ -508,13 +510,14 @@ export async function bulkCheckout(input: BulkCheckoutSchema): Promise<Purchase[
 
     // We don't clear the entire cart here because the user might have unchecked
     // items they didn't pay for. Let the client remove only the purchased items.
-    revalidateTag(CACHE_TAGS.purchases);
+    revalidateTag(CACHE_TAGS.purchases, "max");
     revalidatePath("/cart");
     revalidatePath("/orders");
     revalidatePath("/payment-history");
 
     return results;
   } catch (error) {
+    console.log(error)
     // Throw a plain Error so Next.js can serialize it across the Server Action
     // boundary. Custom error subclasses with unknown payloads cause
     // "Error in input stream" on the client.
@@ -527,11 +530,17 @@ export async function createPayment(input: PaymentSchema): Promise<Purchase> {
   return getOrderById(String(purchase_id));
 }
 
-export async function getOrders(): Promise<Purchase[]> {
+export async function getOrders(params?: { search?: string, page?: number, status?: string }): Promise<PaginatedResponse<Purchase>> {
   try {
-    const response = await apiClient<Purchase[]>({
+    const query: Record<string, string | number> = {};
+    if (params?.search) query.search = params.search;
+    if (params?.page) query.page = params.page;
+    if (params?.status && params.status !== "all") query.status = params.status;
+
+    const response = await apiClient<PaginatedResponse<Purchase>>({
       method: "GET",
       endpoint: "/api/ecommerce/purchases/",
+      query,
       cache: "force-cache",
       next: {
         revalidate: 60,
@@ -539,8 +548,40 @@ export async function getOrders(): Promise<Purchase[]> {
       },
     });
 
-    return normalizeCollection(response);
+    return response;
   } catch (error) {
+    throw toEcommerceApiError(error);
+  }
+}
+
+export async function getPurchaseKpiSummary(): Promise<PurchaseKpiSummary> {
+  try {
+    const response = await apiClient<PurchaseKpiSummary>({
+      method: "GET",
+      endpoint: "/api/ecommerce/purchases/kpi-summary/",
+      cache: "force-cache",
+      next: {
+        revalidate: 60,
+        tags: [CACHE_TAGS.purchases, 'purchases-kpi'],
+      },
+    });
+    return response;
+  } catch (error) {
+    // If the backend route isn't available yet return safe defaults so the
+    // Orders page can render instead of surfacing the Django 404 HTML.
+    try {
+      if (error instanceof ApiError && (error as any).status === 404) {
+        return {
+          total_revenue: 0,
+          average_order_value: 0,
+          pending_orders: 0,
+          top_vendors: [],
+        } as PurchaseKpiSummary;
+      }
+    } catch (_) {
+      // fall through to throwing a normalized error
+    }
+
     throw toEcommerceApiError(error);
   }
 }
@@ -576,7 +617,7 @@ export async function updateOrderStatus(
       cache: "no-store",
     });
 
-    revalidateTag(CACHE_TAGS.purchases);
+    revalidateTag(CACHE_TAGS.purchases, "max");
     revalidatePath("/orders");
     revalidatePath(`/orders/${payload.purchase_id}`);
 

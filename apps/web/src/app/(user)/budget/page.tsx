@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { BudgetPlannerPage as BudgetPlannerClient } from "@/components/finance/budget-planner-page";
 import { apiClient } from "@/lib/api";
 import type { BudgetRecord, BudgetSuggestion, BudgetSummary } from "@/types/finance";
@@ -9,7 +11,7 @@ export default async function BudgetPage() {
     const [budgetsRaw, expenses] = await Promise.all([
       apiClient<any>({ endpoint: "/api/finance/budgets/", method: "GET" }),
       // include_products returns a canonical category list for the UI (and is also allowed anonymously)
-      apiClient<any>({ endpoint: "/api/finance/expenses/", method: "GET", query: { include_products: 1, pageSize: 20 } }),
+      apiClient<any>({ endpoint: "/api/finance/expenses/", method: "GET", query: { include_products: 1, pageSize: 10 } }),
     ]);
 
     const budgets: BudgetRecord[] = Array.isArray(budgetsRaw) ? budgetsRaw : (budgetsRaw?.results ?? []);

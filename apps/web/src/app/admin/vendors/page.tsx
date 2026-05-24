@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import AdminPanelShell from "../_components/admin-panel-shell";
 import { apiClient, ApiError } from "@/lib/api";
 

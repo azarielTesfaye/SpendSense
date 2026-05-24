@@ -1,24 +1,18 @@
 "use server";
 
-import { z } from "zod";
 import { apiClient, ApiError } from "@/lib/api";
+import { shoppingListSchema } from "@/lib/validation/shopping-list";
 
 type ActionResult<T> =
   | { success: true; data: T }
   | { success: false; message: string };
-
-const addToShoppingListSchema = z.object({
-  itemId: z.string().uuid(),
-  quantity: z.coerce.number().positive(),
-  unit: z.string(),
-});
 
 export async function addToShoppingList(
   itemId: string,
   quantity: number,
   unit: string
 ): Promise<ActionResult<void>> {
-  const parsed = addToShoppingListSchema.parse({ itemId, quantity, unit });
+  const parsed = shoppingListSchema.parse({ itemId, quantity, unit });
   try {
     await apiClient<void>({
       method: "POST",

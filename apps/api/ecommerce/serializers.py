@@ -11,6 +11,9 @@ from users.models import User, Vendor
 
 from .chapa import ChapaInitError, initialize_chapa_checkout
 from .models import Transaction, VendorReview
+from finance.models import Expense
+import datetime
+import logging
 
 
 class VendorPublicSerializer(serializers.ModelSerializer):
@@ -22,6 +25,7 @@ class VendorPublicSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'shop_name', 'city', 'address', 'contact_phone',
             'latitude', 'longitude', 'is_verified', 'verification_status',
+            'verification_rejection_reason',
             'business_license', 'tin_number', 'rating_avg', 'rating_count', 'joined_at',
             'owner_name', 'owner_email',
         )
@@ -116,10 +120,12 @@ class VendorPriceSerializer(serializers.ModelSerializer):
 
 
 class TransactionSerializer(serializers.ModelSerializer):
+    vendor_name = serializers.CharField(source='vendor.shop_name', read_only=True)
+
     class Meta:
         model = Transaction
         fields = (
-            'id', 'vendor', 'vendor_price', 'quantity', 'amount', 'currency',
+            'id', 'vendor', 'vendor_name', 'vendor_price', 'quantity', 'amount', 'currency',
             'status', 'reference', 'payment_method', 'payment_reference',
             'payment_url', 'paid_at', 'created_at', 'updated_at',
         )
@@ -167,6 +173,20 @@ class PurchaseCreateSerializer(serializers.Serializer):
             payment_method=payment_method,
             payment_url='',
         )
+        # Create a pending Expense record so the purchase is visible in expense history
+        try:
+            Expense.objects.create(
+                user=user,
+                category='Shopping',
+                item=vp.item if vp else None,
+                amount=amount,
+                vendor=vp.vendor,
+                payment_method=payment_method,
+                date=datetime.date.today(),
+                note=f'Pending Chapa payment. Order ref: {rec.reference}',
+            )
+        except Exception:
+            pass
         if payment_method == 'chapa':
             try:
                 full_name = (user.full_name or 'SpendSense User').split()
@@ -186,6 +206,16 @@ class PurchaseCreateSerializer(serializers.Serializer):
                 f"{settings.FRONTEND_URL.rstrip('/')}/shop/payment/return?reference={rec.reference}"
             )
         rec.save(update_fields=['payment_url'])
+        try:
+            logging.getLogger(__name__).info(
+                'Created Transaction: id=%s reference=%s payment_method=%s payment_url=%s',
+                rec.id,
+                rec.reference,
+                rec.payment_method,
+                rec.payment_url,
+            )
+        except Exception:
+            pass
         return rec
 
 
@@ -249,7 +279,30 @@ class PurchaseBulkCreateSerializer(serializers.Serializer):
                     payment_method=payment_method,
                     payment_url='',
                 )
+                # create a pending expense to show in payment history
+                try:
+                    Expense.objects.create(
+                        user=user,
+                        category='Shopping',
+                        item=vp.item if vp else None,
+                        amount=amount,
+                        vendor=vp.vendor,
+                        payment_method=payment_method,
+                        date=datetime.date.today(),
+                        note=f'Pending Chapa payment. Order ref: {tx.reference}',
+                    )
+                except Exception:
+                    pass
                 transactions.append((tx, vp))
+                try:
+                    logging.getLogger(__name__).info(
+                        'Bulk-created Transaction: id=%s reference=%s amount=%s',
+                        tx.id,
+                        tx.reference,
+                        tx.amount,
+                    )
+                except Exception:
+                    pass
 
             # Chapa expects a compact unique tx_ref. Keep individual order refs
             # on each transaction and store this group ref for webhook lookup.
@@ -282,6 +335,16 @@ class PurchaseBulkCreateSerializer(serializers.Serializer):
                 payment_reference=combined_ref,
                 payment_url=checkout_url,
             )
+            try:
+                logging.getLogger(__name__).info(
+                    'Bulk checkout initialized: combined_ref=%s total_amount=%s checkout_url=%s transactions=%s',
+                    combined_ref,
+                    total_amount,
+                    checkout_url,
+                    refs,
+                )
+            except Exception:
+                pass
             for tx, _ in transactions:
                 tx.payment_reference = combined_ref
                 tx.payment_url = checkout_url

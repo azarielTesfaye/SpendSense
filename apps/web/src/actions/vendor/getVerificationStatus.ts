@@ -5,6 +5,8 @@ import { apiClient } from "@/lib/api";
 interface VendorStatus {
   is_verified: boolean;
   verification_status: 'unrequested' | 'requested' | 'pending' | 'verified' | 'rejected';
+  shop_name?: string;
+  verification_rejection_reason?: string | null;
 }
 
 export async function getVerificationStatus() {
@@ -19,7 +21,8 @@ export async function getVerificationStatus() {
     return {
       is_verified: vendorInfo.is_verified || false,
       verification_status: vendorInfo.verification_status || 'unrequested',
-      shop_name: vendorInfo.shop_name
+      shop_name: vendorInfo.shop_name,
+      verification_rejection_reason: vendorInfo.verification_rejection_reason || null,
     } as VendorStatus;
   } catch (error) {
     console.error("Failed to get verification status:", error);

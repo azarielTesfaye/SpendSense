@@ -7,6 +7,12 @@ export interface VendorRegistrationPayload {
   longitude?: number;
 }
 
+export interface BusinessHourEntry {
+  day: string;
+  start: string;
+  end: string;
+}
+
 export interface VendorProfile {
   id?: string;
   full_name?: string;
@@ -14,6 +20,7 @@ export interface VendorProfile {
   phone?: string;
   city?: string;
   role?: string;
+  onboarding_completed?: boolean;
   household_size?: number;
   income_bracket?: string;
   avatar?: string;
@@ -24,6 +31,10 @@ export interface VendorProfile {
   shop_name?: string;
   address?: string;
   contact_phone?: string;
+  latitude?: number;
+  longitude?: number;
+  business_hours?: BusinessHourEntry[];
+  vendor_info?: Record<string, unknown> | null;
 }
 
 export interface VendorProduct {
@@ -242,6 +253,9 @@ export async function getCurrentUserProfile(): Promise<VendorProfile> {
     shop_name: vendorInfo?.shop_name,
     address: vendorInfo?.address,
     contact_phone: vendorInfo?.contact_phone,
+    latitude: vendorInfo?.latitude != null ? Number(vendorInfo.latitude) : undefined,
+    longitude: vendorInfo?.longitude != null ? Number(vendorInfo.longitude) : undefined,
+    business_hours: Array.isArray(vendorInfo?.business_hours) ? vendorInfo.business_hours : undefined,
     image: vendorInfo?.image,
     image_url: vendorInfo?.image_url,
     theme_image: vendorInfo?.theme_image,
@@ -273,6 +287,9 @@ export async function updateCurrentUserProfile(
     shop_name: vendorInfo?.shop_name,
     address: vendorInfo?.address,
     contact_phone: vendorInfo?.contact_phone,
+    latitude: vendorInfo?.latitude != null ? Number(vendorInfo.latitude) : undefined,
+    longitude: vendorInfo?.longitude != null ? Number(vendorInfo.longitude) : undefined,
+    business_hours: Array.isArray(vendorInfo?.business_hours) ? vendorInfo.business_hours : undefined,
     image: vendorInfo?.image,
     image_url: vendorInfo?.image_url,
     theme_image: vendorInfo?.theme_image,

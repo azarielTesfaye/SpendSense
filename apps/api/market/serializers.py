@@ -167,7 +167,7 @@ class VendorPriceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = VendorPrice
-        fields = ('id', 'vendor_id', 'vendor_name', 'city', 'rating_avg', 'is_verified', 'price', 'date')
+        fields = ('id', 'vendor_id', 'vendor_name', 'city', 'rating_avg', 'is_verified', 'price', 'date', 'stock_count')
         ref_name = "MarketVendorPrice"
 
 
@@ -310,10 +310,12 @@ class VendorProductSerializer(serializers.ModelSerializer):
         return float(obj.price) * 1.15
 
     def get_stockStatus(self, obj):
-        return "InStock"
+        if obj.stock_count is None:
+            return "OutOfStock"
+        return "InStock" if obj.stock_count > 10 else "LowStock" if obj.stock_count > 0 else "OutOfStock"
 
     def get_stockQuantity(self, obj):
-        return 50
+        return obj.stock_count or 0
 
     def get_priceTrend(self, obj):
         return -2.5

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { apiClient, ApiError } from "@/lib/api";
 import { getMarketCategories, getMarketItems } from "@/lib/market";
 import type { VendorPriceResponse } from "@/types/api/vendor";

@@ -18,7 +18,7 @@ export interface VendorDetailResponse {
   imageUrl: string | null;
   createdAt: string;
   description: string;
-  businessHours: string;
+  businessHours: string | { day: string; start: string; end: string }[] | null;
   deliveryAvailable: boolean;
   deliveryEstimate: string | null;
   paymentMethods: string[];

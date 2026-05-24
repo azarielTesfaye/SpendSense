@@ -32,13 +32,18 @@ export function attachRedisNotificationBridge(io: Server): void {
         try {
           const parsed = JSON.parse(message) as {
             userId?: string;
+            room?: string;
             event?: string;
             payload?: unknown;
           };
-          if (!parsed.userId || !parsed.event) {
+          if (!parsed.event) {
             return;
           }
-          io.to(`user:${parsed.userId}`).emit(parsed.event, parsed.payload);
+          if (parsed.room) {
+            io.to(parsed.room).emit(parsed.event, parsed.payload);
+          } else if (parsed.userId) {
+            io.to(`user:${parsed.userId}`).emit(parsed.event, parsed.payload);
+          }
         } catch (e) {
           log(`Invalid Redis notification payload: ${(e as Error).message}`);
         }

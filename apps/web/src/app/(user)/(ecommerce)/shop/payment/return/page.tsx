@@ -85,6 +85,7 @@ function PaymentReturnInner() {
 
   useEffect(() => {
     const pending = readPendingCheckout();
+    console.log('[PaymentReturn] pending checkout read:', pending);
     if (pending.listingIds.length === 0) {
       clearPendingCheckout();
       return;
@@ -92,6 +93,7 @@ function PaymentReturnInner() {
 
     async function clearCartAfterConfirmedPayment() {
       if (hasSuccessfulReturnStatus(searchParams)) {
+        console.log('[PaymentReturn] return status indicates success — removing pending listings:', pending.listingIds);
         await removeBulkFromCart(pending.listingIds);
         clearPendingCheckout();
         return;
@@ -101,14 +103,18 @@ function PaymentReturnInner() {
         return;
       }
 
-      const orders = await getOrders();
+      const ordersRes = await getOrders();
+      const orders = ordersRes.results;
+      console.log('[PaymentReturn] fetched user orders count=', orders.length);
       const pendingRefs = new Set(pending.references);
       const matchingOrders = orders.filter((order) => pendingRefs.has(order.reference));
+      console.log('[PaymentReturn] matching orders for pending refs:', matchingOrders);
       const allPendingOrdersPaid =
         matchingOrders.length === pendingRefs.size &&
         matchingOrders.every((order) => order.status === "paid");
 
       if (allPendingOrdersPaid) {
+        console.log('[PaymentReturn] all pending orders are paid — clearing cart for listings:', pending.listingIds);
         await removeBulkFromCart(pending.listingIds);
         clearPendingCheckout();
       }
@@ -130,9 +136,9 @@ function PaymentReturnInner() {
         <Button asChild>
           <Link href="/orders">View orders</Link>
         </Button>
-        <Button variant="outline" asChild>
+        {/* <Button variant="outline" asChild>
           <Link href="/payment-history">View payment history</Link>
-        </Button>
+        </Button> */}
       </div>
     </div>
   );

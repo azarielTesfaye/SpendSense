@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Suspense } from "react";
 import { apiClient } from "@/lib/api";
 import { ExpensesHeader } from "@/components/finance/expenses/expenses-header";
@@ -20,7 +22,7 @@ export default async function ExpensesPageRoute({ searchParams }: PageProps) {
   const params = await searchParams;
   const search = params.search || "";
   const page = parseInt(params.page || "1");
-  const pageSize = parseInt(params.pageSize || "20");
+  const pageSize = parseInt(params.pageSize || "10");
 
   return (
     <div className="max-w-7xl space-y-0 pb-8">
@@ -49,7 +51,7 @@ async function ExpensesSummaryWrapper() {
       apiClient<PaginatedResponse<ExpenseRecord>>({
       method: "GET",
       endpoint: "/api/finance/expenses/",
-      query: { pageSize: 100 },
+      query: { pageSize: 10 },
     }).catch(() => []),
       apiClient<any>({ method: "GET", endpoint: "/api/finance/budgets/" }).catch(() => []),
     ]);

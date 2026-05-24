@@ -14,9 +14,9 @@ export async function approveVendor(vendorId: string): Promise<ActionResult> {
       endpoint: `/api/ecommerce/admin/vendors/${vendorId}/verify/`,
     });
 
-    revalidateTag("admin-vendors");
-    revalidateTag("profile"); // Vendor's profile might be cached
-    revalidateTag("vendors"); // Public market list
+    revalidateTag("admin-vendors", "max");
+    revalidateTag("profile", "max"); // Vendor's profile might be cached
+    revalidateTag("vendors", "max"); // Public market list
     
     return { success: true, data: null };
   } catch (error) {
@@ -35,9 +35,9 @@ export async function rejectVendor(vendorId: string, reason: string): Promise<Ac
       body: { reason },
     });
 
-    revalidateTag("admin-vendors");
-    revalidateTag("profile");
-    revalidateTag("vendors");
+    revalidateTag("admin-vendors", "max");
+    revalidateTag("profile", "max");
+    revalidateTag("vendors", "max");
 
     return { success: true, data: null };
   } catch (error) {

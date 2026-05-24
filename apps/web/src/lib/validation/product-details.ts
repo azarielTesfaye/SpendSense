@@ -87,6 +87,7 @@ export const priceSubmissionSchema = z.object({
 export const priceAlertInputSchema = z.object({
   targetPrice: z.coerce.number().positive(),
   itemId: z.string(),
+  city: z.string().optional(),
 });
 
 export const productSearchParamsSchema = z.object({

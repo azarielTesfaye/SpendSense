@@ -35,11 +35,14 @@ urlpatterns.extend([
 ])
 
 
-from .vendor_views import VendorDetailView, VendorProductListView, VendorReviewListView
+from .vendor_views import VendorDetailView, VendorProductListView, VendorReviewListView, VendorPriceTrendView, VendorSimilarView, VendorReportView
 urlpatterns.extend([
     path('vendors/<uuid:pk>/', VendorDetailView.as_view(), name='vendor-detail'),
     path('vendors/<uuid:pk>/products/', VendorProductListView.as_view(), name='vendor-products'),
     path('vendors/<uuid:pk>/reviews/', VendorReviewListView.as_view(), name='vendor-reviews'),
+    path('vendors/<uuid:pk>/price-trend/', VendorPriceTrendView.as_view(), name='vendor-price-trend'),
+    path('vendors/<uuid:pk>/similar/', VendorSimilarView.as_view(), name='vendor-similar'),
+    path('vendors/<uuid:pk>/reports/', VendorReportView.as_view(), name='vendor-report'),
 ])
 
 from .views import PriceAlertListCreateView, PriceAlertDestroyView

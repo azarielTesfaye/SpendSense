@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { apiClient } from "@/lib/api";
 import { type ExpenseRecord } from "@/types/finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/card";
@@ -16,6 +18,7 @@ export default async function PaymentHistoryPage() {
       endpoint: "/api/finance/expenses/",
       next: { revalidate: 60, tags: ["expenses"] },
     });
+		
     // the backend may return paginated or direct array depending on implementation
     if (Array.isArray(res)) {
       expenses = res;

@@ -78,6 +78,7 @@ class Vendor(models.Model):
         choices=VERIFICATION_STATUS_CHOICES, 
         default='unrequested'
     )
+    verification_rejection_reason = models.TextField(blank=True, default='')
     # Average rating updated when reviews are posted (denormalized)
     rating_avg = models.DecimalField(max_digits=3, decimal_places=2, default=0)
     rating_count = models.PositiveIntegerField(default=0)

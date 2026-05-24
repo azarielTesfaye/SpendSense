@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getMarketItems, getMarketCategories } from "@/lib/market";
 import ProductCreateForm from "./ProductCreateForm";
 import { Suspense } from "react";

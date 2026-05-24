@@ -145,7 +145,7 @@ export function ProductHero({ product,offer }: ProductHeroProps) {
         {offer &&(
           <CartSection offer={offer} product={product} /> 
         )}
-        <ProductActions productId={product.id} unit={product.unit} />
+        <ProductActions productId={product.id} unit={product.unit} currentPrice={product.currentAveragePrice} />
       </div>
     </div>
   );
