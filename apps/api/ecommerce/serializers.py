@@ -19,6 +19,9 @@ import logging
 class VendorPublicSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.full_name', read_only=True)
     owner_email = serializers.EmailField(source='owner.email', read_only=True)
+    report_count = serializers.SerializerMethodField()
+    latest_report_reason = serializers.SerializerMethodField()
+    latest_reported_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Vendor
@@ -27,8 +30,22 @@ class VendorPublicSerializer(serializers.ModelSerializer):
             'latitude', 'longitude', 'is_verified', 'verification_status',
             'verification_rejection_reason',
             'business_license', 'tin_number', 'rating_avg', 'rating_count', 'joined_at',
+            'report_count', 'latest_report_reason', 'latest_reported_at',
             'owner_name', 'owner_email',
         )
+
+    def _report_summary(self, obj):
+        summary = self.context.get('report_summary') or {}
+        return summary.get(str(obj.id), {})
+
+    def get_report_count(self, obj):
+        return int(self._report_summary(obj).get('report_count') or 0)
+
+    def get_latest_report_reason(self, obj):
+        return self._report_summary(obj).get('latest_report_reason') or ''
+
+    def get_latest_reported_at(self, obj):
+        return self._report_summary(obj).get('latest_reported_at')
 
 
 class VendorRegisterSerializer(serializers.ModelSerializer):
@@ -357,17 +374,53 @@ class PurchaseStatusUpdateSerializer(serializers.Serializer):
 
 
 class VendorReviewSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(source='pk', read_only=True)
+    vendor = serializers.CharField(source='vendor_id', read_only=True)
+    user = serializers.CharField(source='user_id', read_only=True)
     user_email = serializers.EmailField(source='user.email', read_only=True)
+    userName = serializers.SerializerMethodField()
+    userInitial = serializers.SerializerMethodField()
+    date = serializers.SerializerMethodField()
+    helpfulCount = serializers.SerializerMethodField()
+    verifiedPurchase = serializers.SerializerMethodField()
 
     class Meta:
         model = VendorReview
-        fields = ('id', 'vendor', 'user', 'user_email', 'rating', 'comment', 'created_at')
-        read_only_fields = ('id', 'vendor', 'user', 'user_email', 'created_at')
+        fields = (
+            'id', 'vendor', 'user', 'user_email', 'userName', 'userInitial',
+            'rating', 'comment', 'date', 'helpfulCount', 'verifiedPurchase', 'created_at'
+        )
+        read_only_fields = (
+            'id', 'vendor', 'user', 'user_email', 'userName', 'userInitial',
+            'date', 'helpfulCount', 'verifiedPurchase', 'created_at'
+        )
 
     def validate_rating(self, v):
         if v < 1 or v > 5:
             raise serializers.ValidationError('Rating must be 1–5.')
         return v
+
+    def get_userName(self, obj):
+        return getattr(obj.user, 'full_name', '') or getattr(obj.user, 'email', '')
+
+    def get_userInitial(self, obj):
+        name = self.get_userName(obj).strip()
+        return (name[:1] or 'U').upper()
+
+    def get_date(self, obj):
+        return obj.created_at
+
+    def get_helpfulCount(self, obj):
+        return 0
+
+    def get_verifiedPurchase(self, obj):
+        from .models import Transaction
+
+        return Transaction.objects.filter(
+            user=obj.user,
+            vendor=obj.vendor,
+            status__in=['paid', 'shipped', 'delivered'],
+        ).exists()
 
     def create(self, validated_data):
         request = self.context['request']

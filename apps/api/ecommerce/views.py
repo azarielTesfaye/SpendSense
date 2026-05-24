@@ -16,6 +16,47 @@ import logging
 
 from .pagination import StandardResultsSetPagination
 
+
+def _vendor_admin_bucket(vendor: Vendor) -> str:
+    rejection_reason = (vendor.verification_rejection_reason or '').strip()
+    if vendor.verification_status == 'suspended':
+        return 'suspended'
+    if vendor.is_verified or vendor.verification_status == 'verified':
+        return 'verified'
+    if vendor.verification_status == 'rejected' or rejection_reason:
+        return 'rejected'
+    if vendor.verification_status in ('requested', 'pending'):
+        return 'pending'
+    return 'unrequested'
+
+
+def _build_vendor_report_summary(vendor_ids):
+    if not vendor_ids:
+        return {}
+
+    rows = AuditLog.objects.filter(
+        action='vendor_report',
+        resource='vendor',
+        resource_id__in=vendor_ids,
+    ).order_by('resource_id', '-created_at', '-id')
+
+    summary = {}
+    for row in rows:
+        bucket = summary.setdefault(
+            row.resource_id,
+            {
+                'report_count': 0,
+                'latest_report_reason': '',
+                'latest_reported_at': None,
+            },
+        )
+        bucket['report_count'] += 1
+        if not bucket['latest_report_reason']:
+            bucket['latest_report_reason'] = (row.detail or {}).get('reason', '') or ''
+            bucket['latest_reported_at'] = row.created_at
+
+    return summary
+
 from core_api.permissions import IsAdminRole
 from market.models import VendorPrice
 from users.models import AuditLog, Notification, User, Vendor
@@ -730,6 +771,45 @@ class VendorReviewListCreateView(generics.ListCreateAPIView):
         vendor_id = self.kwargs.get('vendor_id')
         return VendorReview.objects.filter(vendor_id=vendor_id).select_related('user')
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset()).order_by('-created_at')
+
+        try:
+            page = int(request.query_params.get('page') or 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.query_params.get('page_size') or request.query_params.get('pageSize') or 10)
+        except (TypeError, ValueError):
+            page_size = 10
+
+        from django.core.paginator import EmptyPage, Paginator
+        paginator = Paginator(queryset, page_size)
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            page_obj = paginator.page(paginator.num_pages or 1)
+
+        serializer = self.get_serializer(page_obj.object_list, many=True)
+
+        reviews = serializer.data
+        total_reviews = queryset.count()
+        average_rating = float(queryset.aggregate(avg=Avg('rating'))['avg'] or 0)
+        distribution = {str(star): queryset.filter(rating=star).count() for star in range(1, 6)}
+
+        return Response({
+            'pagination': {
+                'total_records': paginator.count,
+                'total_pages': paginator.num_pages,
+                'page_size': paginator.per_page,
+                'current_page': page_obj.number,
+            },
+            'reviews': reviews,
+            'averageRating': average_rating,
+            'totalReviews': total_reviews,
+            'distribution': distribution,
+        })
+
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
         ctx['vendor'] = self.get_vendor()
@@ -744,12 +824,73 @@ class AdminVendorListView(generics.ListAPIView):
     serializer_class = VendorPublicSerializer
     pagination_class = StandardResultsSetPagination
 
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['report_summary'] = getattr(self, '_report_summary', {})
+        return ctx
+
     def get_queryset(self):
         qs = Vendor.objects.select_related('owner').order_by('-joined_at')
-        status = self.request.query_params.get('status')
-        if status:
-            qs = qs.filter(verification_status=status)
+        search = (self.request.query_params.get('search') or self.request.query_params.get('q') or '').strip()
+        status_filter = (self.request.query_params.get('status') or 'all').strip().lower()
+
+        if search:
+            qs = qs.filter(
+                Q(shop_name__icontains=search)
+                | Q(city__icontains=search)
+                | Q(address__icontains=search)
+                | Q(contact_phone__icontains=search)
+                | Q(tin_number__icontains=search)
+                | Q(owner__full_name__icontains=search)
+                | Q(owner__email__icontains=search)
+            )
+
+        if status_filter == 'verified':
+            qs = qs.filter(Q(is_verified=True) | Q(verification_status='verified'))
+        elif status_filter == 'pending':
+            qs = qs.filter(verification_status__in=['requested', 'pending'])
+        elif status_filter == 'rejected':
+            qs = qs.filter(Q(verification_status='rejected') | (Q(verification_rejection_reason__isnull=False) & ~Q(verification_rejection_reason='')))
+        elif status_filter == 'suspended':
+            qs = qs.filter(verification_status='suspended')
+
         return qs
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        page_ids = [str(v.id) for v in page] if page is not None else []
+        self._report_summary = _build_vendor_report_summary(page_ids)
+        serializer = self.get_serializer(page, many=True)
+        paginated = self.get_paginated_response(serializer.data)
+
+        all_vendors = list(Vendor.objects.all())
+        status_counts = {
+            'verified': 0,
+            'pending': 0,
+            'rejected': 0,
+            'suspended': 0,
+            'unrequested': 0,
+        }
+        for vendor in all_vendors:
+            status_counts[_vendor_admin_bucket(vendor)] += 1
+
+        stats = {
+            'total': len(all_vendors),
+            'verified': status_counts['verified'],
+            'pending': status_counts['pending'],
+            'rejected': status_counts['rejected'],
+            'suspended': status_counts['suspended'],
+            'unrequested': status_counts['unrequested'],
+            'status_breakdown': status_counts,
+        }
+
+        payload = paginated.data
+        payload['stats'] = stats
+        payload['active_status'] = (request.query_params.get('status') or 'all').lower()
+        payload['search'] = (request.query_params.get('search') or request.query_params.get('q') or '').strip()
+        return Response(payload)
 
 
 class AdminVendorVerifyView(APIView):
@@ -802,3 +943,59 @@ class AdminVendorRejectView(APIView):
             detail={'reason': reason},
         )
         return Response({'detail': 'Vendor verification rejected.'}, status=status.HTTP_200_OK)
+
+
+class AdminVendorSuspendView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def post(self, request, pk):
+        v = get_object_or_404(Vendor, pk=pk)
+
+        reason = request.data.get('reason', 'Suspended by administrator.')
+        v.is_verified = False
+        v.verification_status = 'suspended'
+        v.verification_rejection_reason = reason
+        v.save(update_fields=['is_verified', 'verification_status', 'verification_rejection_reason'])
+
+        Notification.objects.create(
+            user=v.owner,
+            type='vendor_suspended',
+            message=f'Your vendor account has been suspended. Reason: {reason}',
+        )
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action='vendor_suspend',
+            resource='vendor',
+            resource_id=str(pk),
+            detail={'reason': reason},
+        )
+        return Response({'detail': 'Vendor account suspended.'}, status=status.HTTP_200_OK)
+
+
+class AdminVendorRestoreView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def post(self, request, pk):
+        v = get_object_or_404(Vendor, pk=pk)
+
+        reason = request.data.get('reason', 'Restored after admin review.')
+        v.is_verified = True
+        v.verification_status = 'verified'
+        v.verification_rejection_reason = ''
+        v.save(update_fields=['is_verified', 'verification_status', 'verification_rejection_reason'])
+
+        Notification.objects.create(
+            user=v.owner,
+            type='vendor_restored',
+            message=f'Your vendor account has been restored after review. Note: {reason}',
+        )
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action='vendor_restore',
+            resource='vendor',
+            resource_id=str(pk),
+            detail={'reason': reason},
+        )
+        return Response({'detail': 'Vendor account restored and verified.'}, status=status.HTTP_200_OK)

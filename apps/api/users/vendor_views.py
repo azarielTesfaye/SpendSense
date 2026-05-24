@@ -1,4 +1,5 @@
 from rest_framework import generics, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
@@ -41,6 +42,8 @@ class VendorUpdateView(generics.RetrieveUpdateAPIView):
         # 1. Try to get existing vendor first
         vendor = Vendor.objects.filter(owner=user).first()
         if vendor:
+            if vendor.verification_status == 'suspended':
+                raise PermissionDenied('This vendor account has been suspended by an administrator.')
             # Ensure the user has the 'vendor' role if they have a vendor record
             if user.role == 'user':
                 user.role = 'vendor'
@@ -83,11 +86,18 @@ class VendorVerifyRequestView(generics.UpdateAPIView):
         if user.role == 'user':
             user.role = 'vendor'
             user.save(update_fields=['role'])
+        if vendor.verification_status == 'suspended':
+            raise PermissionDenied('This vendor account has been suspended by an administrator.')
         return vendor
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', True) # allow partial updates
         instance = self.get_object()
+        if instance.verification_status == 'suspended':
+            return Response(
+                {'detail': 'This vendor account has been suspended by an administrator.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         # Update verification_status to "requested"

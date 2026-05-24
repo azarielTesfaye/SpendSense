@@ -71,6 +71,7 @@ class Vendor(models.Model):
         ('pending', 'Pending'),
         ('verified', 'Verified'),
         ('rejected', 'Rejected'),
+        ('suspended', 'Suspended'),
     )
     is_verified = models.BooleanField(default=False)
     verification_status = models.CharField(
