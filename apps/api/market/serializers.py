@@ -164,10 +164,16 @@ class VendorPriceSerializer(serializers.ModelSerializer):
     city = serializers.CharField(source='vendor.city', read_only=True)
     rating_avg = serializers.DecimalField(source='vendor.rating_avg', max_digits=3, decimal_places=2, read_only=True)
     is_verified = serializers.BooleanField(source='vendor.is_verified', read_only=True)
+    description = serializers.CharField(read_only=True)
+    variant = serializers.CharField(read_only=True)
+    base_price = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True, read_only=True)
 
     class Meta:
         model = VendorPrice
-        fields = ('id', 'vendor_id', 'vendor_name', 'city', 'rating_avg', 'is_verified', 'price', 'date', 'stock_count')
+        fields = (
+            'id', 'vendor_id', 'vendor_name', 'city', 'rating_avg', 'is_verified',
+            'description', 'variant', 'price', 'base_price', 'date', 'stock_count',
+        )
         ref_name = "MarketVendorPrice"
 
 
@@ -280,6 +286,9 @@ class VendorProductSerializer(serializers.ModelSerializer):
     category = serializers.CharField(source='item.category', read_only=True)
     imageUrl = serializers.SerializerMethodField()
     unit = serializers.CharField(source='item.unit', read_only=True)
+    description = serializers.CharField(read_only=True)
+    variant = serializers.CharField(read_only=True)
+    basePrice = serializers.DecimalField(source='base_price', max_digits=10, decimal_places=2, allow_null=True, read_only=True)
     comparePrice = serializers.SerializerMethodField()
     stockStatus = serializers.SerializerMethodField()
     stockQuantity = serializers.SerializerMethodField()
@@ -292,7 +301,7 @@ class VendorProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = VendorPrice
         fields = (
-            'id', 'itemId', 'itemName', 'category', 'imageUrl', 'price', 'unit',
+            'id', 'itemId', 'itemName', 'category', 'imageUrl', 'description', 'variant', 'price', 'basePrice', 'unit',
             'comparePrice', 'stockStatus', 'stockQuantity', 'priceTrend',
             'nationalAveragePrice', 'nationalAverageDiff', 'createdAt', 'updatedAt'
         )

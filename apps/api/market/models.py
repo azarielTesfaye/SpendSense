@@ -55,7 +55,10 @@ class NationalPrice(models.Model):
 class VendorPrice(models.Model):
     vendor = models.ForeignKey('users.Vendor', on_delete=models.CASCADE)
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
+    description = models.TextField(blank=True, default='')
+    variant = models.CharField(max_length=150, blank=True, default='')
     price = models.DecimalField(max_digits=10, decimal_places=2)
+    base_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     stock_count = models.PositiveIntegerField(default=0)
     date = models.DateField(auto_now_add=True)
     image = models.ImageField(upload_to='listings/', null=True, blank=True)

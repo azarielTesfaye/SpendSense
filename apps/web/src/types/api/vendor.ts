@@ -9,7 +9,10 @@ export interface VendorPriceResponse {
   item_name: string;
   unit: string;
   category: string;
+  description: string;
+  variant: string;
   price: number;
+  base_price: number | null;
   stock_count: number;
   image: string | null;
   images?: {

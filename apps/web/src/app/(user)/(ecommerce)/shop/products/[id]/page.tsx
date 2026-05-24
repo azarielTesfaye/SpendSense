@@ -156,6 +156,18 @@ export default function ProductDetailPage() {
             <p className="text-xs font-black text-primary flex items-center gap-2 uppercase tracking-widest">
               <TrendingDown size={14} /> {product.percent_vs_market_avg != null ? `${Math.abs(product.percent_vs_market_avg)}% vs market avg` : "Market price data available"}
             </p>
+            <div className="pt-4 space-y-3">
+              {product.variant ? (
+                <Badge className="rounded-full bg-white text-slate-900 font-black border-none">
+                  Variant: {product.variant}
+                </Badge>
+              ) : null}
+              {product.description ? (
+                <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                  {product.description}
+                </p>
+              ) : null}
+            </div>
           </div>
 
           <div className="space-y-8">
@@ -182,6 +194,9 @@ export default function ProductDetailPage() {
                   <div className="text-left">
                     <p className="font-black">{product.unit} configuration</p>
                     <p className="text-[10px] font-bold text-primary/70 uppercase">Vendor: {product.shop_name}</p>
+                    {product.variant ? (
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase">Variant: {product.variant}</p>
+                    ) : null}
                   </div>
                   <Badge className="bg-primary text-white">Selected</Badge>
                 </Button>
@@ -192,6 +207,11 @@ export default function ProductDetailPage() {
                   </div>
                 </Button>
               </div>
+              {product.description ? (
+                <p className="rounded-2xl border border-muted/60 bg-white/70 p-4 text-sm leading-relaxed text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">
+                  {product.description}
+                </p>
+              ) : null}
             </div>
           </div>
 

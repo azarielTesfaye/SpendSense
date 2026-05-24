@@ -14,6 +14,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 import logging
 
+from users.models import AuditLog, Notification, User, Vendor
+
 from .pagination import StandardResultsSetPagination
 
 
@@ -59,7 +61,6 @@ def _build_vendor_report_summary(vendor_ids):
 
 from core_api.permissions import IsAdminRole
 from market.models import VendorPrice
-from users.models import AuditLog, Notification, User, Vendor
 
 from django.db import transaction as db_transaction
 from django.utils import timezone

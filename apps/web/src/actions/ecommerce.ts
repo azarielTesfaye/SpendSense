@@ -312,6 +312,9 @@ export async function createVendorListing(
       body: {
         item: payload.item,
         price: payload.price,
+        base_price: payload.base_price,
+        description: payload.description,
+        variant: payload.variant,
         stock_count: payload.stock_count,
       },
       cache: "no-store",
