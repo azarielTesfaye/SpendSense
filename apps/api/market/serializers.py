@@ -196,6 +196,7 @@ class MarketVendorListCardSerializer(serializers.ModelSerializer):
     topItems = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source='joined_at', read_only=True)
     competitivenessScore = serializers.SerializerMethodField()
+    priceForSearchedItem = serializers.SerializerMethodField()
 
     class Meta:
         model = Vendor
@@ -203,7 +204,7 @@ class MarketVendorListCardSerializer(serializers.ModelSerializer):
             'id', 'vendorName', 'shopName', 'location', 'region',
             'latitude', 'longitude', 'rating', 'reviewCount', 'competitivenessScore',
             'verifiedStatus', 'contactInfo', 'itemsListed', 'priceRangeMin',
-            'priceRangeMax', 'topItems', 'imageUrl', 'createdAt'
+            'priceRangeMax', 'topItems', 'imageUrl', 'createdAt', 'priceForSearchedItem'
         )
 
     def get_verifiedStatus(self, obj):
@@ -236,6 +237,18 @@ class MarketVendorListCardSerializer(serializers.ModelSerializer):
 
     def get_competitivenessScore(self, obj):
         return 95  # Static for now as requested
+
+    def get_priceForSearchedItem(self, obj):
+        q = self.context.get('q')
+        if not q:
+            return None
+        if hasattr(obj, 'searched_price') and obj.searched_price is not None:
+            return float(obj.searched_price)
+            
+        prices = VendorPrice.objects.filter(vendor=obj, item__name__icontains=q).values_list('price', flat=True)
+        if prices:
+            return float(min(prices))
+        return None
 
 
 class VendorDetailSerializer(MarketVendorListCardSerializer):

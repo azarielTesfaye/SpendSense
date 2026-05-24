@@ -41,6 +41,15 @@ export async function getVendorProducts(vendorId: string, params?: ProductQueryP
   return vendorProductListSchema.parse(rawData);
 }
 
+export async function getVendorCategories(vendorId: string) {
+  const raw = await apiClient<{ categories: string[] }>({
+    method: "GET",
+    endpoint: `/api/ecommerce/vendors/${vendorId}/categories/`,
+    next: { tags: [`vendor:${vendorId}:categories`], revalidate: 300 },
+  });
+  return Array.isArray(raw?.categories) ? raw.categories : [];
+}
+
 export async function getVendorReviews(vendorId: string, page: number = 1) {
   const rawData = await apiClient<VendorReviewListResponse>({
     method: "GET",

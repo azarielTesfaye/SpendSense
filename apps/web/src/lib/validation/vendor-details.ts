@@ -83,14 +83,20 @@ export const vendorProductListSchema = z.object({
 }).transform((data) => {
   const products = data.results;
   const prices = products.map((p) => p.price);
+  // Prefer backend-provided categories if available; otherwise derive from results
+  const backendCats = (data as any).categories;
+  const categories = Array.isArray(backendCats) && backendCats.length
+    ? Array.from(new Set(backendCats.map((c: any) => String(c))))
+    : Array.from(new Set(products.map((p) => p.category)));
+
   return {
     products,
     pagination: data.pagination,
-    categories: Array.from(new Set(products.map((p) => p.category))),
-    priceRange: { 
-      min: prices.length ? Math.min(...prices) : 0, 
-      max: prices.length ? Math.max(...prices) : 0 
-    }
+    categories,
+    priceRange: {
+      min: prices.length ? Math.min(...prices) : 0,
+      max: prices.length ? Math.max(...prices) : 0,
+    },
   };
 });
 
@@ -111,6 +117,19 @@ export const vendorReviewListSchema = z.object({
   averageRating: z.number(),
   totalReviews: z.number(),
   distribution: z.record(z.string(), z.number()),
+  eligibility: z.enum(["eligible", "ineligible", "already_reviewed"]).optional().nullable(),
+  verifiedPurchaseDetails: z.object({
+    itemName: z.string(),
+    date: z.string(),
+  }).optional().nullable(),
+  userReview: z.object({
+    id: z.string(),
+    rating: z.number(),
+    comment: z.string(),
+    createdAt: z.string(),
+    canEdit: z.boolean(),
+    expiresInSeconds: z.number(),
+  }).optional().nullable(),
 });
 
 export const productSearchParamsSchema = z.object({

@@ -1,21 +1,20 @@
 
-import { notFound } from "next/navigation";
-import { ProductHero } from "@/components/product-detail/product-hero";
 import { PriceHistoryChart } from "@/components/product-detail/price-history-chart";
-import { VendorComparisonTable } from "@/components/product-detail/vendor-comparison-table";
 import { PriceStatCards } from "@/components/product-detail/price-stat-cards";
-import { SimilarProducts } from "@/components/product-detail/similar-products";
 import { PriceSubmissions } from "@/components/product-detail/price-submissions";
-import { VendorOfferPanel } from "@/components/product-detail/vendor-offer-panel";
+import { ProductHero } from "@/components/product-detail/product-hero";
+import { SimilarProducts } from "@/components/product-detail/similar-products";
+import { VendorComparisonTable } from "@/components/product-detail/vendor-comparison-table";
 import type { VendorOfferContext } from "@/components/product-detail/vendor-offer-panel";
 import {
-  getProductDetail,
   getPriceHistory,
-  getVendorPriceComparisons,
-  getSimilarProducts,
+  getProductDetail,
   getRecentPriceSubmissions,
+  getSimilarProducts,
+  getVendorPriceComparisons,
 } from "@/lib/product-details";
-import { getVendorListing, getVendorDetail } from "@/lib/vendor-details";
+import { getVendorDetail, getVendorListing } from "@/lib/vendor-details";
+import { notFound } from "next/navigation";
 
 interface ProductPageProps {
   params: Promise<{ itemId: string }>;

@@ -39,7 +39,15 @@ export interface PriceTrendPoint {
 export interface PriceHistoryResponse {
   itemId: string;
   timeRange: string;
-  dataPoints: { date: string; price: number; isForecast: boolean }[];
+  dataPoints: {
+    date: string;
+    price: number;
+    isForecast: boolean;
+    isLastHistorical?: boolean;
+    confidenceInterval?: [number, number];
+    confidenceLow?: number;
+    confidenceHigh?: number;
+  }[];
   nationalAverageDataPoints: { date: string; price: number }[];
 }
 

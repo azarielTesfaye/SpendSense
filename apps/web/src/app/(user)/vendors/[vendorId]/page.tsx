@@ -1,4 +1,4 @@
-import { getVendorDetail, getVendorProducts, getVendorReviews, getVendorPriceTrend } from "@/lib/vendor-details";
+import { getVendorDetail, getVendorProducts, getVendorReviews, getVendorPriceTrend, getVendorCategories } from "@/lib/vendor-details";
 import { notFound } from "next/navigation";
 import { Star, MapPin, Phone, MessageCircle, Heart, CheckCircle, Package } from "lucide-react";
 import Image from "next/image";
@@ -10,13 +10,14 @@ import { Metadata } from "next";
 
 // Component imports
 import ProductCard from "@/components/vendors/ProductCard";
-import RatingDistribution from "@/components/vendors/RatingDistribution";
+import ReviewSectionClient from "@/components/vendors/ReviewSectionClient";
 import PriceCompetitivenessChart from "@/components/vendors/PriceCompetitivenessChart";
 import LocationCard from "@/components/vendors/LocationCard";
 import ShareVendorButton from "@/components/vendors/ShareVendorButton";
 import ReportVendorDialog from "@/components/vendors/ReportVendorDialog";
 import SimilarVendors from "@/components/vendors/SimilarVendors";
 import ProductGridFilters from "@/components/vendors/ProductGridFilters";
+import PaginationControls from "@/components/vendors/PaginationControls";
 
 // Skeleton imports
 import ProductGridSkeleton from "@/components/vendors/skeletons/ProductGridSkeleton";
@@ -323,14 +324,23 @@ async function ProductGrid({
   isAuthenticated: boolean;
 }) {
   try {
-    const vendorProducts = await getVendorProducts(vendorId, productParams);
+    const [vendorProducts, vendorCategories] = await Promise.all([
+      getVendorProducts(vendorId, productParams),
+      getVendorCategories(vendorId),
+    ]);
+
+    const categoriesToUse = Array.isArray(vendorCategories) && vendorCategories.length
+      ? vendorCategories
+      : vendorProducts.categories;
+
     return (
       <div className="space-y-6">
         {/* Category Tabs & Pagination Controls */}
-        <ProductGridFilters
-          categories={vendorProducts.categories}
-          pagination={vendorProducts.pagination}
-        />
+          <ProductGridFilters
+            categories={categoriesToUse}
+            pagination={vendorProducts.pagination}
+            hidePagination
+          />
 
         {vendorProducts.products.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 border border-dashed rounded-xl bg-card text-center">
@@ -351,8 +361,10 @@ async function ProductGrid({
                 city={vendorDetail.region}
               />
             ))}
-          </div>
-        )}
+            </div>
+          )}
+          {/* Pagination below product cards */}
+          <PaginationControls pagination={vendorProducts.pagination} />
       </div>
     );
   } catch (error) {
@@ -373,43 +385,7 @@ async function ProductGrid({
 async function ReviewSection({ vendorId }: { vendorId: string }) {
   try {
     const vendorReviews = await getVendorReviews(vendorId);
-    return (
-      <div className="space-y-6">
-        {/* Overall star rating distribution histogram */}
-        <RatingDistribution
-          averageRating={vendorReviews.averageRating}
-          totalReviews={vendorReviews.totalReviews}
-          distribution={vendorReviews.distribution}
-        />
-
-        {vendorReviews.reviews.length === 0 ? (
-          <div className="border border-dashed rounded-xl p-6 bg-card text-sm text-muted-foreground text-center">
-            No reviews have been written for this shop yet.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {vendorReviews.reviews.map((review) => (
-              <div key={review.id} className="border rounded-xl p-4 bg-card space-y-2 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 flex items-center justify-center font-bold text-xs">
-                    {review.userInitial}
-                  </div>
-                  <span className="font-semibold text-sm">{review.userName}</span>
-                  <div className="flex ml-auto text-amber-500">
-                    {Array.from({ length: review.rating }).map((_, i) => (
-                      <Star key={i} className="w-3.5 h-3.5 fill-current" />
-                    ))}
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {review.comment}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
+    return <ReviewSectionClient vendorId={vendorId} initialReviews={vendorReviews} />;
   } catch (error) {
     console.error("Failed to load reviews:", error);
     return (

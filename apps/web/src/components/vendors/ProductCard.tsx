@@ -87,7 +87,7 @@ export default function ProductCard({
   const productUrl = `/products/${product.itemId}?${vendorParams.toString()}`;
 
   return (
-    <div className="border rounded-2xl p-4 bg-card hover:shadow-lg transition-all duration-300 hover:-translate-y-1 block group flex flex-col justify-between h-[360px]">
+    <div className="border rounded-2xl p-4 bg-card hover:shadow-lg transition-all duration-300 hover:-translate-y-1 block group flex flex-col justify-between ">
       {/* Upper clickable part */}
       <Link href={productUrl} className="block space-y-3 flex-1">
         {/* Product Image */}
@@ -144,42 +144,7 @@ export default function ProductCard({
               : "✗ Out of Stock"}
           </span>
         </div>
-
-        {/* Action Panel */}
-        <div className="flex items-center gap-2 pt-1 w-full">
-          {/* Add to List Button */}
-          <Button
-            onClick={handleAddToList}
-            disabled={inList || isPending || product.stockStatus === "OutOfStock"}
-            variant={inList ? "outline" : "secondary"}
-            size="sm"
-            className="flex-1 rounded-xl text-xs font-semibold py-2.5 transition-all gap-1.5 cursor-pointer"
-          >
-            {isPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : inList ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-green-600 font-extrabold" />
-                In List
-              </>
-            ) : (
-              <>
-                <Plus className="w-3.5 h-3.5" />
-                Add to List
-              </>
-            )}
-          </Button>
-
-          {/* Price Alert Dialog Bell Trigger */}
-          <PriceAlertDialog
-            itemId={product.itemId}
-            itemName={product.itemName}
-            price={product.price}
-            shopName={vendorDetail.shopName}
-            isAuthenticated={isAuthenticated}
-            city={city || vendorDetail.region}
-          />
-        </div>
+       
       </div>
     </div>
   );

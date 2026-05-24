@@ -88,4 +88,17 @@ export interface VendorReviewListResponse {
   averageRating: number;
   totalReviews: number;
   distribution: Record<"1" | "2" | "3" | "4" | "5", number>;
+  eligibility?: "eligible" | "ineligible" | "already_reviewed" | null;
+  verifiedPurchaseDetails?: {
+    itemName: string;
+    date: string;
+  } | null;
+  userReview?: {
+    id: string;
+    rating: number;
+    comment: string;
+    createdAt: string;
+    canEdit: boolean;
+    expiresInSeconds: number;
+  } | null;
 }
