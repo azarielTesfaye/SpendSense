@@ -51,6 +51,12 @@ const navItems = [
     matchPaths: ["/vendors"],
   },
   {
+    icon: ShoppingCart,
+    label: "Products",
+    href: "/products",
+    matchPaths: ["/products"],
+  },
+  {
     icon: TrendingUp,
     label: "Live Prices",
     href: "/live-price",

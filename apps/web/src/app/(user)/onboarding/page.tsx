@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@repo/ui/components/button";
-import { Input } from "@repo/ui/components/input";
 import { useAuth } from "@/providers/auth-provider";
 import { updateProfile } from "@/services/userService";
 
@@ -16,6 +15,8 @@ export default function OnboardingPage() {
   const [budgetAlerts, setBudgetAlerts] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const CITY_OPTIONS = ["Addis Ababa", "Adama"] as const;
 
   const onComplete = async () => {
     if (!accessToken) {
@@ -61,7 +62,17 @@ export default function OnboardingPage() {
 
       <div className="space-y-2">
         <label className="text-sm font-medium">City</label>
-        <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Adama" />
+        <select
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+          className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 outline-none focus:border-[#135bec] focus:bg-white transition-all"
+        >
+          {CITY_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
