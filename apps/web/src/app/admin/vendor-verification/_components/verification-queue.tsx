@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, MapPin, Store, XCircle, FileText, Calendar, Mail, Phone, User as UserIcon } from "lucide-react";
+import { CheckCircle2, MapPin, Store, XCircle, FileText, Calendar, Mail, Phone, User as UserIcon, ShieldAlert } from "lucide-react";
 import { AdminVendor } from "@/types/api/admin-vendors";
-import { approveVendor, rejectVendor } from "@/actions/admin/vendor-actions";
+import { approveVendor, rejectVendor, suspendVendor } from "@/actions/admin/vendor-actions";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
@@ -47,6 +47,27 @@ export default function VerificationQueue({ initialVendors }: VerificationQueueP
 
     if (res.success) {
       toast.success("Vendor rejected");
+      const newVendors = vendors.filter((_, i) => i !== selectedIndex);
+      setVendors(newVendors);
+      setSelectedIndex(0);
+      setReason("");
+    } else {
+      toast.error(res.message);
+    }
+  }
+
+  async function handleSuspend() {
+    if (!selectedVendor) return;
+    if (!reason.trim()) {
+      toast.error("Please provide a reason for suspension");
+      return;
+    }
+    setIsSubmitting(true);
+    const res = await suspendVendor(selectedVendor.id, reason);
+    setIsSubmitting(false);
+
+    if (res.success) {
+      toast.success("Vendor suspended");
       const newVendors = vendors.filter((_, i) => i !== selectedIndex);
       setVendors(newVendors);
       setSelectedIndex(0);
@@ -157,16 +178,24 @@ export default function VerificationQueue({ initialVendors }: VerificationQueueP
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Reviewer Notes / Rejection Reason
+                Reviewer Notes / Rejection Reason / Suspension Reason
               </label>
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 className="h-32 w-full resize-none rounded-xl border-none bg-slate-100 p-4 text-sm focus:ring-2 focus:ring-blue-200 transition-all"
-                placeholder="Reason for rejection (mandatory for rejection)..."
+                placeholder="Reason for rejection or suspension..."
               />
             </div>
             <div className="flex flex-col justify-end gap-3">
+              <button 
+                onClick={handleSuspend}
+                disabled={isSubmitting}
+                className="group inline-flex items-center justify-center gap-2 rounded-xl border-2 border-amber-100 bg-amber-50 px-6 py-3.5 font-bold text-amber-700 hover:bg-amber-100 hover:border-amber-200 transition-all disabled:opacity-50"
+              >
+                <ShieldAlert size={18} className="group-hover:scale-110 transition-transform" /> 
+                Suspend Vendor
+              </button>
               <button 
                 onClick={handleReject}
                 disabled={isSubmitting}

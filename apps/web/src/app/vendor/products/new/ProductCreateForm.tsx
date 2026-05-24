@@ -37,7 +37,10 @@ export default function ProductCreateForm({
   // const [vendorId, setVendorId] = useState<string>("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [selectedItemId, setSelectedItemId] = useState<number | "">("");
+  const [description, setDescription] = useState<string>("");
+  const [variant, setVariant] = useState<string>("");
   const [price, setPrice] = useState<string>("");
+  const [basePrice, setBasePrice] = useState<string>("");
   const [stockCount, setStockCount] = useState<string>("");
   const [images, setImages] = useState<LocalImage[]>([]);
   const [saving, setSaving] = useState(false);
@@ -129,6 +132,12 @@ export default function ProductCreateForm({
       return;
     }
 
+    const basePriceNum = basePrice.trim() ? parseFloat(basePrice) : priceNum;
+    if (isNaN(basePriceNum) || basePriceNum <= 0) {
+      toast.error("Please enter a valid base price greater than zero.");
+      return;
+    }
+
     const stockNum = Number(stockCount);
     if (!Number.isInteger(stockNum) || stockNum < 0) {
       toast.error("Please enter a valid stock value of zero or more.");
@@ -139,7 +148,10 @@ export default function ProductCreateForm({
     const formData = new FormData();
     formData.append("item", String(selectedItemId));
     formData.append("price", String(priceNum));
+    formData.append("base_price", String(basePriceNum));
     formData.append("stock_count", String(stockNum));
+    formData.append("description", description.trim());
+    formData.append("variant", variant.trim());
     if (images[0]?.file) {
       formData.append("image", images[0].file);
     }
@@ -154,7 +166,10 @@ export default function ProductCreateForm({
           description: `Listing #${result.data.id} — ${result.data.item_name} at ETB ${result.data.price}`,
         });
         setSelectedItemId("");
+        setDescription("");
+        setVariant("");
         setPrice("");
+        setBasePrice("");
         setStockCount("");
         setImages([]);
       } else {
@@ -317,7 +332,7 @@ export default function ProductCreateForm({
                           src={
                             selectedItem.image.startsWith("http")
                               ? selectedItem.image
-                              : `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${selectedItem.image}`
+                              : `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}${selectedItem.image}`
                           }
                           alt={selectedItem.name}
                           className="h-full w-full object-cover"
@@ -349,9 +364,62 @@ export default function ProductCreateForm({
                 </div>
               )}
 
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">
+                  Description
+                </label>
+                <textarea
+                  className="min-h-28 w-full rounded-lg border-none bg-[#f0f2f4] px-4 py-3 text-sm transition-all focus:ring-2 focus:ring-[#135bec]/20"
+                  placeholder="Describe the product, size options, and what makes this listing unique."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">
+                    Variant
+                  </label>
+                  <input
+                    className="w-full rounded-lg border-none bg-[#f0f2f4] px-4 py-3 text-sm transition-all focus:ring-2 focus:ring-[#135bec]/20"
+                    type="text"
+                    placeholder="Optional, e.g. 5 liters, 10 liters, Others"
+                    value={variant}
+                    onChange={(e) => setVariant(e.target.value)}
+                  />
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Leave blank if this product has no variant.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">
+                    Base Price (1 unit)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                      ETB
+                    </span>
+                    <input
+                      className="w-full rounded-lg border-none bg-[#f0f2f4] py-3 pl-12 pr-4 text-sm font-bold transition-all focus:ring-2 focus:ring-[#135bec]/20"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="0.00"
+                      value={basePrice}
+                      onChange={(e) => setBasePrice(e.target.value)}
+                    />
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Price per 1 unit, used as the base reference for variant pricing.
+                  </p>
+                </div>
+              </div>
+
               <div className="pt-2">
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">
-                  Base Price (ETB)
+                  Variant Price (ETB)
                 </label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
@@ -370,7 +438,7 @@ export default function ProductCreateForm({
                 </div>
                 <p className="mt-2 text-[11px] text-slate-400 flex items-center gap-1.5">
                   <Info size={12} className="text-[#135bec]" />
-                  Enter the price per {selectedItem?.unit || "unit"}.
+                  Enter the selected variant price per {selectedItem?.unit || "unit"}.
                 </p>
               </div>
 
@@ -534,6 +602,22 @@ export default function ProductCreateForm({
                   <div className="h-4 w-4 rounded-full border-2 border-white/20" />
                 )}
                 PRICING DETAILS
+              </div>
+              <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest">
+                {basePrice.trim() ? (
+                  <CheckCircle2 size={16} className="text-emerald-400" />
+                ) : (
+                  <div className="h-4 w-4 rounded-full border-2 border-white/20" />
+                )}
+                BASE PRICE
+              </div>
+              <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest">
+                {description.trim() ? (
+                  <CheckCircle2 size={16} className="text-emerald-400" />
+                ) : (
+                  <div className="h-4 w-4 rounded-full border-2 border-white/20" />
+                )}
+                DESCRIPTION
               </div>
               <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest">
                 {stockCount !== "" && Number(stockCount) >= 0 ? (

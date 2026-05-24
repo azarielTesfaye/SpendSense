@@ -32,7 +32,10 @@ export interface VendorListing {
   item: number;
   item_name: string;
   unit: string;
+  description?: string;
+  variant?: string;
   price: number | string;
+  base_price?: number | string | null;
   stock_count: number;
   date: string;
   is_verified: boolean;
@@ -137,7 +140,14 @@ export class EcommerceClient {
 
   async createVendorListing(
     vendorId: UUID,
-    payload: { item: number; price: number; stock_count: number },
+    payload: {
+      item: number;
+      price: number;
+      stock_count: number;
+      description?: string;
+      variant?: string;
+      base_price?: number | null;
+    },
     token: string,
   ) {
     const res = await fetch(
@@ -155,7 +165,10 @@ export class EcommerceClient {
     listingId: number,
     payload: Partial<{
       price: number;
+      base_price: number | null;
       stock_count: number;
+      description: string;
+      variant: string;
       is_verified: boolean;
     }>,
     token: string,

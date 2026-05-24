@@ -41,7 +41,7 @@ type EditableImage =
 function buildImageUrl(src: string | null | undefined) {
   if (!src) return null;
   if (src.startsWith("http") || src.startsWith("data:")) return src;
-  return `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${src}`;
+  return `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}${src}`;
 }
 
 function getInitialImages(product: VendorPriceResponse): EditableImage[] {
@@ -77,8 +77,15 @@ export default function ProductEditForm({
   const [selectedItemId, setSelectedItemId] = useState<number | "">(
     initialProduct.item,
   );
+  const [description, setDescription] = useState<string>(
+    initialProduct.description || "",
+  );
+  const [variant, setVariant] = useState<string>(initialProduct.variant || "");
   const [price, setPrice] = useState<string>(
     String(initialProduct.price ?? ""),
+  );
+  const [basePrice, setBasePrice] = useState<string>(
+    String(initialProduct.base_price ?? initialProduct.price ?? ""),
   );
   const [stockCount, setStockCount] = useState<string>(
     String(initialProduct.stock_count ?? 0),
@@ -159,6 +166,13 @@ export default function ProductEditForm({
         return;
       }
 
+      const basePriceNum = basePrice.trim() ? Number(basePrice) : priceNum;
+      if (!Number.isFinite(basePriceNum) || basePriceNum <= 0) {
+        toast.error("Enter a valid base price greater than zero.");
+        setSaving(false);
+        return;
+      }
+
       const stockNum = Number(stockCount);
       if (!Number.isInteger(stockNum) || stockNum < 0) {
         toast.error("Enter a valid stock value of zero or more.");
@@ -169,7 +183,10 @@ export default function ProductEditForm({
       const formData = new FormData();
       formData.append("item", String(selectedItemId));
       formData.append("price", String(priceNum));
+      formData.append("base_price", String(basePriceNum));
       formData.append("stock_count", String(stockNum));
+      formData.append("description", description.trim());
+      formData.append("variant", variant.trim());
       const newImages = images.filter(
         (image): image is Extract<EditableImage, { source: "local" }> =>
           image.source === "local",
@@ -185,7 +202,10 @@ export default function ProductEditForm({
       if (result.success) {
         setSourceProduct(result.data);
         setSelectedItemId(result.data.item);
+        setDescription(result.data.description || "");
+        setVariant(result.data.variant || "");
         setPrice(String(result.data.price));
+        setBasePrice(String(result.data.base_price ?? result.data.price));
         setStockCount(String(result.data.stock_count));
         setImages(getInitialImages(result.data));
         toast.success("Product updated successfully", {
@@ -323,7 +343,60 @@ export default function ProductEditForm({
 
             <div>
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">
-                Base Price (ETB)
+                Description
+              </label>
+              <textarea
+                className="min-h-28 w-full rounded-lg border-none bg-[#f0f2f4] px-4 py-3 text-sm transition-all focus:ring-2 focus:ring-[#135bec]/20"
+                placeholder="Describe the product, size options, and any important details."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">
+                  Variant
+                </label>
+                <input
+                  className="w-full rounded-lg border-none bg-[#f0f2f4] px-4 py-3 text-sm transition-all focus:ring-2 focus:ring-[#135bec]/20"
+                  type="text"
+                  placeholder="Optional, e.g. 5 liters, 10 liters, Others"
+                  value={variant}
+                  onChange={(e) => setVariant(e.target.value)}
+                />
+                <p className="mt-2 text-[11px] text-slate-400">
+                  Leave blank if this product has no variant.
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">
+                  Base Price (1 unit)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                    ETB
+                  </span>
+                  <input
+                    className="w-full rounded-lg border-none bg-[#f0f2f4] py-3 pl-12 pr-4 text-sm font-bold transition-all focus:ring-2 focus:ring-[#135bec]/20"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0.00"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                  />
+                </div>
+                <p className="mt-2 text-[11px] text-slate-400">
+                  Base reference price for 1 unit of the product.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">
+                Variant Price (ETB)
               </label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
@@ -342,7 +415,7 @@ export default function ProductEditForm({
               </div>
               <p className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
                 <Info size={12} className="text-[#135bec]" />
-                Enter the price per{" "}
+                Enter the selected variant price per {" "}
                 {selectedItem?.unit || sourceProduct.unit || "unit"}.
               </p>
             </div>

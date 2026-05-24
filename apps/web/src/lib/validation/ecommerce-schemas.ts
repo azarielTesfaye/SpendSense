@@ -55,6 +55,9 @@ export const vendorListingCreateSchema = z.object({
   vendor_id: uuidSchema,
   item: z.number().int().positive(),
   price: z.number().positive(),
+  base_price: z.number().positive().optional().nullable(),
+  description: z.string().trim().max(5000).optional().or(z.literal("")),
+  variant: z.string().trim().max(200).optional().or(z.literal("")),
   stock_count: z.number().int().min(0),
 });
 

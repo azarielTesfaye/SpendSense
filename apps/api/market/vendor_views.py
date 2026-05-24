@@ -261,9 +261,11 @@ class VendorSimilarView(views.APIView):
 from rest_framework.permissions import IsAuthenticated
 from users.models import AuditLog
 from rest_framework import status
+from users.models import Notification, Vendor
 
 class VendorReportView(views.APIView):
     permission_classes = [IsAuthenticated]
+    REPORT_SUSPEND_THRESHOLD = 3
     
     def post(self, request, pk):
         reason = request.data.get('reason')
@@ -278,6 +280,31 @@ class VendorReportView(views.APIView):
             resource_id=str(pk),
             detail={'reason': reason, 'details': details}
         )
+
+        report_count = (
+            AuditLog.objects.filter(action='vendor_report', resource='vendor', resource_id=str(pk))
+            .values('actor_id')
+            .distinct()
+            .count()
+        )
+        vendor = Vendor.objects.filter(pk=pk).first()
+        if vendor and report_count >= self.REPORT_SUSPEND_THRESHOLD and vendor.verification_status != 'suspended':
+            vendor.is_verified = False
+            vendor.verification_status = 'suspended'
+            vendor.verification_rejection_reason = f'Auto-suspended after {report_count} unique reports. Latest reason: {reason}'
+            vendor.save(update_fields=['is_verified', 'verification_status', 'verification_rejection_reason'])
+            Notification.objects.create(
+                user=vendor.owner,
+                type='vendor_suspended',
+                message=f'Your vendor account was temporarily suspended after multiple reports. Reason: {reason}',
+            )
+            AuditLog.objects.create(
+                actor=request.user,
+                action='vendor_auto_suspend',
+                resource='vendor',
+                resource_id=str(pk),
+                detail={'report_count': report_count, 'reason': reason},
+            )
         
         return Response({'success': True, 'message': 'Report submitted. We\'ll review within 24 hours.'})
 

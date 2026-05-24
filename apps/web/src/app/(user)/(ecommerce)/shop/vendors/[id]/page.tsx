@@ -183,6 +183,16 @@ export default async function VendorProfile({ params }: { params: Promise<{ id: 
                   <p className="text-sm text-muted-foreground mt-1 line-clamp-2 font-medium">
                     {listing.unit ? `Unit: ${listing.unit}` : `Listing #${listing.item}`}
                   </p>
+                  {listing.variant ? (
+                    <Badge variant="secondary" className="mt-3 rounded-full bg-primary/5 text-primary border-none font-bold">
+                      {listing.variant}
+                    </Badge>
+                  ) : null}
+                  {listing.description ? (
+                    <p className="mt-3 text-xs leading-relaxed text-slate-600 line-clamp-3">
+                      {listing.description}
+                    </p>
+                  ) : null}
                   <div className="mt-6 flex items-center justify-between">
                     <span className="text-xl font-black text-primary tracking-tight">ETB {Number(listing.price).toLocaleString("en-ET")}</span>
                     <Button size="icon" className="rounded-2xl shadow-lg active:scale-90">

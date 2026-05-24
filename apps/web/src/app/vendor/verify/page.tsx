@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, ShieldCheck, AlertCircle } from "lucide-react";
+import { CheckCircle2, Clock, ShieldCheck, AlertCircle, ShieldAlert } from "lucide-react";
 import { getVerificationStatus } from "@/actions/vendor/getVerificationStatus";
 import Link from "next/link";
 import { VerificationForm } from "./_components/verification-form";
@@ -77,6 +77,36 @@ export default async function VendorVerifyPage() {
                 <p className="mt-8 text-sm text-slate-400 italic">
                   Verification usually takes 24-48 business hours. You'll receive a notification once approved.
                 </p>
+              </>
+            ) : vStatus === 'suspended' ? (
+              <>
+                <div className="mx-auto w-20 h-20 bg-slate-200 text-slate-700 rounded-full flex items-center justify-center mb-6">
+                  <ShieldAlert size={40} />
+                </div>
+                <h1 className="text-3xl font-bold text-slate-900 mb-4">Account Suspended</h1>
+                <p className="text-slate-500 mb-8 text-lg leading-relaxed">
+                  Your vendor account has been suspended by an administrator. You can review the reason below and contact support if you need clarification.
+                </p>
+                {status?.verification_rejection_reason && (
+                  <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left">
+                    <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-600">Suspension Note</p>
+                    <p className="text-sm text-slate-700">{status.verification_rejection_reason}</p>
+                  </div>
+                )}
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Link 
+                    href="/vendor/profile"
+                    className="inline-flex items-center justify-center rounded-2xl border-2 border-slate-200 bg-white px-8 py-4 font-bold text-slate-700 transition-all hover:bg-slate-50 active:scale-95"
+                  >
+                    Review Profile
+                  </Link>
+                  <Link 
+                    href="/dashboard"
+                    className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-8 py-4 font-bold text-white transition-all hover:bg-slate-800 active:scale-95"
+                  >
+                    Go to User Dashboard
+                  </Link>
+                </div>
               </>
             ) : vStatus === 'rejected' ? (
               <>

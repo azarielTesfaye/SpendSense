@@ -15,7 +15,10 @@ export async function createListingAction(
 ): Promise<ActionResult<VendorPriceResponse>> {
   const item = formData.get("item");
   const price = formData.get("price");
+  const basePrice = formData.get("base_price");
   const stockCount = formData.get("stock_count");
+  const description = formData.get("description");
+  const variant = formData.get("variant");
   const image = formData.get("image");
   const images = formData.getAll("images");
 
@@ -28,7 +31,12 @@ export async function createListingAction(
     const serverFormData = new FormData();
     serverFormData.append("item", String(item));
     serverFormData.append("price", String(price));
+    if (basePrice !== null && basePrice !== "") {
+      serverFormData.append("base_price", String(basePrice));
+    }
     serverFormData.append("stock_count", String(stockCount));
+    serverFormData.append("description", String(description ?? ""));
+    serverFormData.append("variant", String(variant ?? ""));
 
     if (image && image instanceof File && image.size > 0) {
       serverFormData.append("image", image);
@@ -79,7 +87,10 @@ export async function updateListingAction(
 ): Promise<ActionResult<VendorPriceResponse>> {
   const item = formData.get("item");
   const price = formData.get("price");
+  const basePrice = formData.get("base_price");
   const stockCount = formData.get("stock_count");
+  const description = formData.get("description");
+  const variant = formData.get("variant");
   const image = formData.get("image");
   const images = formData.getAll("images");
 
@@ -91,7 +102,12 @@ export async function updateListingAction(
     const serverFormData = new FormData();
     serverFormData.append("item", String(item));
     serverFormData.append("price", String(price));
+    if (basePrice !== null && basePrice !== "") {
+      serverFormData.append("base_price", String(basePrice));
+    }
     serverFormData.append("stock_count", String(stockCount));
+    serverFormData.append("description", String(description ?? ""));
+    serverFormData.append("variant", String(variant ?? ""));
 
     if (image && image instanceof File && image.size > 0) {
       serverFormData.append("image", image);

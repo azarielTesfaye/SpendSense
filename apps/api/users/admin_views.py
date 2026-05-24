@@ -1,11 +1,17 @@
+from datetime import timedelta
+
+from django.db.models import Avg, Q
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core_api.permissions import IsAdminRole
+from market.models import PriceSubmission
+from ecommerce.models import VendorReview
 
-from .models import AuditLog, SystemSetting
+from .models import AuditLog, SystemSetting, User, Vendor
 
 
 class SystemSettingSerializer(serializers.ModelSerializer):
@@ -63,4 +69,108 @@ class AdminAuditListView(APIView):
                 }
                 for r in rows
             ]
+        )
+
+
+class AdminDashboardView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get(self, request):
+        today = timezone.localdate()
+        start_date = today - timedelta(days=6)
+
+        total_users = User.objects.count()
+        active_users = User.objects.filter(is_active=True).count()
+
+        total_vendors = Vendor.objects.count()
+        verified_vendors = Vendor.objects.filter(Q(is_verified=True) | Q(verification_status='verified')).count()
+        pending_vendors = Vendor.objects.filter(verification_status__in=['requested', 'pending']).count()
+        suspended_vendors = Vendor.objects.filter(verification_status='suspended').count()
+        rejected_vendors = Vendor.objects.filter(
+            Q(verification_status='rejected')
+            | Q(verification_status='suspended')
+            | (Q(verification_rejection_reason__isnull=False) & ~Q(verification_rejection_reason=''))
+        ).count()
+
+        price_flags_today = PriceSubmission.objects.filter(created_at__date=today).filter(
+            Q(outlier_flag=True) | Q(status='rejected')
+        ).count()
+        total_reviews = VendorReview.objects.count()
+        average_rating = VendorReview.objects.aggregate(avg=Avg('rating'))['avg'] or 0
+
+        activity_trend = []
+        for offset in range(6, -1, -1):
+            day = start_date + timedelta(days=offset)
+            activity_trend.append(
+                {
+                    'date': day.isoformat(),
+                    'label': day.strftime('%a'),
+                    'users': User.objects.filter(created_at__date=day).count(),
+                    'vendors': Vendor.objects.filter(joined_at__date=day).count(),
+                    'flags': PriceSubmission.objects.filter(created_at__date=day).filter(
+                        Q(outlier_flag=True) | Q(status='rejected')
+                    ).count(),
+                    'suspensions': AuditLog.objects.filter(action='vendor_suspend', created_at__date=day).count(),
+                    'reviews': VendorReview.objects.filter(created_at__date=day).count(),
+                }
+            )
+
+        recent_activity = [
+            {
+                'id': row.id,
+                'actor_name': row.actor.full_name if row.actor else None,
+                'action': row.action,
+                'resource': row.resource,
+                'resource_id': row.resource_id,
+                'detail': row.detail,
+                'created_at': row.created_at,
+            }
+            for row in AuditLog.objects.select_related('actor').order_by('-created_at')[:8]
+        ]
+
+        top_rated_vendors = [
+            {
+                'id': str(v.id),
+                'shop_name': v.shop_name,
+                'city': v.city,
+                'rating_avg': str(v.rating_avg),
+                'rating_count': v.rating_count,
+                'is_verified': v.is_verified,
+                'verification_status': v.verification_status,
+            }
+            for v in Vendor.objects.order_by('-rating_avg', '-rating_count', '-joined_at')[:20]
+        ]
+
+        least_rated_vendors = [
+            {
+                'id': str(v.id),
+                'shop_name': v.shop_name,
+                'city': v.city,
+                'rating_avg': str(v.rating_avg),
+                'rating_count': v.rating_count,
+                'is_verified': v.is_verified,
+                'verification_status': v.verification_status,
+            }
+            for v in Vendor.objects.order_by('rating_avg', '-rating_count', 'joined_at')[:10]
+        ]
+
+        return Response(
+            {
+                'stats': {
+                    'total_users': total_users,
+                    'active_users': active_users,
+                    'total_vendors': total_vendors,
+                    'verified_vendors': verified_vendors,
+                    'pending_vendors': pending_vendors,
+                    'rejected_vendors': rejected_vendors,
+                    'suspended_vendors': suspended_vendors,
+                    'price_flags_today': price_flags_today,
+                    'total_reviews': total_reviews,
+                    'average_rating': round(float(average_rating), 2),
+                },
+                'activity_trend': activity_trend,
+                'recent_activity': recent_activity,
+                'top_rated_vendors': top_rated_vendors,
+                'least_rated_vendors': least_rated_vendors,
+            }
         )

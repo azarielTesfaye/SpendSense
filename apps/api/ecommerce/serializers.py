@@ -19,6 +19,9 @@ import logging
 class VendorPublicSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.full_name', read_only=True)
     owner_email = serializers.EmailField(source='owner.email', read_only=True)
+    report_count = serializers.SerializerMethodField()
+    latest_report_reason = serializers.SerializerMethodField()
+    latest_reported_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Vendor
@@ -27,8 +30,22 @@ class VendorPublicSerializer(serializers.ModelSerializer):
             'latitude', 'longitude', 'is_verified', 'verification_status',
             'verification_rejection_reason',
             'business_license', 'tin_number', 'rating_avg', 'rating_count', 'joined_at',
+            'report_count', 'latest_report_reason', 'latest_reported_at',
             'owner_name', 'owner_email',
         )
+
+    def _report_summary(self, obj):
+        summary = self.context.get('report_summary') or {}
+        return summary.get(str(obj.id), {})
+
+    def get_report_count(self, obj):
+        return int(self._report_summary(obj).get('report_count') or 0)
+
+    def get_latest_report_reason(self, obj):
+        return self._report_summary(obj).get('latest_report_reason') or ''
+
+    def get_latest_reported_at(self, obj):
+        return self._report_summary(obj).get('latest_reported_at')
 
 
 class VendorRegisterSerializer(serializers.ModelSerializer):
@@ -54,6 +71,9 @@ class VendorPriceSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.name', read_only=True)
     unit = serializers.CharField(source='item.unit', read_only=True)
     category = serializers.CharField(source='item.category', read_only=True)
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+    variant = serializers.CharField(required=False, allow_blank=True, default='')
+    base_price = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     # Vendor identity — exposed on every listing so consumers can display the shop name
     vendor_id = serializers.UUIDField(source='vendor.id', read_only=True)
     vendor_name = serializers.CharField(source='vendor.shop_name', read_only=True)
@@ -64,10 +84,39 @@ class VendorPriceSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'item', 'item_name', 'unit', 'category',
             'vendor_id', 'vendor_name',
-            'price', 'stock_count', 'image', 'images', 'date', 'is_verified',
+            'description', 'variant', 'price', 'base_price', 'stock_count',
+            'image', 'images', 'date', 'is_verified',
         )
         read_only_fields = ('id', 'date', 'is_verified')
         ref_name = "EcommerceVendorPrice"
+
+    def _normalize_price_fields(self, validated_data, instance=None):
+        price = validated_data.get('price', getattr(instance, 'price', None))
+        base_price = validated_data.get('base_price', getattr(instance, 'base_price', None))
+
+        if price is None and base_price is None:
+            raise serializers.ValidationError({'price': 'Either price or base_price is required.'})
+
+        if 'price' not in validated_data and price is not None:
+            validated_data['price'] = price
+
+        if 'base_price' not in validated_data and base_price is not None:
+            validated_data['base_price'] = base_price
+
+        if validated_data.get('price') is None:
+            validated_data['price'] = base_price
+            price = base_price
+
+        if validated_data.get('base_price') is None:
+            validated_data['base_price'] = price
+
+        if validated_data.get('price') is not None and validated_data['price'] <= Decimal('0'):
+            raise serializers.ValidationError({'price': 'Price must be a positive number.'})
+
+        if validated_data.get('base_price') is not None and validated_data['base_price'] <= Decimal('0'):
+            raise serializers.ValidationError({'base_price': 'Base price must be a positive number.'})
+
+        return validated_data
 
     def get_images(self, obj):
         request = self.context.get('request')
@@ -98,6 +147,7 @@ class VendorPriceSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context.get('request')
+        validated_data = self._normalize_price_fields(validated_data)
         vendor_price = super().create(validated_data)
         files = request.FILES.getlist('images') if request else []
         if files:
@@ -112,6 +162,7 @@ class VendorPriceSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         request = self.context.get('request')
+        validated_data = self._normalize_price_fields(validated_data, instance=instance)
         vendor_price = super().update(instance, validated_data)
         files = request.FILES.getlist('images') if request else []
         if files:
@@ -357,17 +408,53 @@ class PurchaseStatusUpdateSerializer(serializers.Serializer):
 
 
 class VendorReviewSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(source='pk', read_only=True)
+    vendor = serializers.CharField(source='vendor_id', read_only=True)
+    user = serializers.CharField(source='user_id', read_only=True)
     user_email = serializers.EmailField(source='user.email', read_only=True)
+    userName = serializers.SerializerMethodField()
+    userInitial = serializers.SerializerMethodField()
+    date = serializers.SerializerMethodField()
+    helpfulCount = serializers.SerializerMethodField()
+    verifiedPurchase = serializers.SerializerMethodField()
 
     class Meta:
         model = VendorReview
-        fields = ('id', 'vendor', 'user', 'user_email', 'rating', 'comment', 'created_at')
-        read_only_fields = ('id', 'vendor', 'user', 'user_email', 'created_at')
+        fields = (
+            'id', 'vendor', 'user', 'user_email', 'userName', 'userInitial',
+            'rating', 'comment', 'date', 'helpfulCount', 'verifiedPurchase', 'created_at'
+        )
+        read_only_fields = (
+            'id', 'vendor', 'user', 'user_email', 'userName', 'userInitial',
+            'date', 'helpfulCount', 'verifiedPurchase', 'created_at'
+        )
 
     def validate_rating(self, v):
         if v < 1 or v > 5:
             raise serializers.ValidationError('Rating must be 1–5.')
         return v
+
+    def get_userName(self, obj):
+        return getattr(obj.user, 'full_name', '') or getattr(obj.user, 'email', '')
+
+    def get_userInitial(self, obj):
+        name = self.get_userName(obj).strip()
+        return (name[:1] or 'U').upper()
+
+    def get_date(self, obj):
+        return obj.created_at
+
+    def get_helpfulCount(self, obj):
+        return 0
+
+    def get_verifiedPurchase(self, obj):
+        from .models import Transaction
+
+        return Transaction.objects.filter(
+            user=obj.user,
+            vendor=obj.vendor,
+            status__in=['paid', 'shipped', 'delivered'],
+        ).exists()
 
     def create(self, validated_data):
         request = self.context['request']

@@ -757,6 +757,10 @@ class MySubmissionDetailView(generics.RetrieveUpdateDestroyAPIView):
     http_method_names = ["get", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return PriceSubmission.objects.none()
+        if not getattr(self.request, 'user', None) or not self.request.user.is_authenticated:
+            return PriceSubmission.objects.none()
         return PriceSubmission.objects.filter(user=self.request.user).select_related("item")
 
     def get_serializer_class(self):
@@ -792,6 +796,10 @@ class MySubmissionsListView(generics.ListAPIView):
     serializer_class = MySubmissionSerializer
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return PriceSubmission.objects.none()
+        if not getattr(self.request, 'user', None) or not self.request.user.is_authenticated:
+            return PriceSubmission.objects.none()
         qs = PriceSubmission.objects.filter(
             user=self.request.user
         ).select_related('item').order_by('-created_at')
@@ -955,6 +963,10 @@ class PriceAlertListCreateView(generics.ListCreateAPIView):
     serializer_class = PriceAlertSerializer
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return PriceAlert.objects.none()
+        if not getattr(self.request, 'user', None) or not self.request.user.is_authenticated:
+            return PriceAlert.objects.none()
         return PriceAlert.objects.filter(
             user=self.request.user,
             is_active=True,
@@ -969,6 +981,10 @@ class PriceAlertDestroyView(generics.DestroyAPIView):
     serializer_class = PriceAlertSerializer
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return PriceAlert.objects.none()
+        if not getattr(self.request, 'user', None) or not self.request.user.is_authenticated:
+            return PriceAlert.objects.none()
         return PriceAlert.objects.filter(user=self.request.user)
 
     def perform_destroy(self, instance):

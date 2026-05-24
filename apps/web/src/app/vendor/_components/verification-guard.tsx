@@ -7,7 +7,7 @@ import { useAuth } from "@/providers/auth-provider";
 
 interface VendorStatus {
   is_verified: boolean;
-  verification_status: 'unrequested' | 'pending' | 'verified' | 'rejected';
+  verification_status: 'unrequested' | 'requested' | 'pending' | 'verified' | 'rejected' | 'suspended';
 }
 
 export function VerificationGuard({ children }: { children: React.ReactNode }) {
