@@ -71,6 +71,9 @@ class VendorPriceSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.name', read_only=True)
     unit = serializers.CharField(source='item.unit', read_only=True)
     category = serializers.CharField(source='item.category', read_only=True)
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+    variant = serializers.CharField(required=False, allow_blank=True, default='')
+    base_price = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     # Vendor identity — exposed on every listing so consumers can display the shop name
     vendor_id = serializers.UUIDField(source='vendor.id', read_only=True)
     vendor_name = serializers.CharField(source='vendor.shop_name', read_only=True)
@@ -81,10 +84,39 @@ class VendorPriceSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'item', 'item_name', 'unit', 'category',
             'vendor_id', 'vendor_name',
-            'price', 'stock_count', 'image', 'images', 'date', 'is_verified',
+            'description', 'variant', 'price', 'base_price', 'stock_count',
+            'image', 'images', 'date', 'is_verified',
         )
         read_only_fields = ('id', 'date', 'is_verified')
         ref_name = "EcommerceVendorPrice"
+
+    def _normalize_price_fields(self, validated_data, instance=None):
+        price = validated_data.get('price', getattr(instance, 'price', None))
+        base_price = validated_data.get('base_price', getattr(instance, 'base_price', None))
+
+        if price is None and base_price is None:
+            raise serializers.ValidationError({'price': 'Either price or base_price is required.'})
+
+        if 'price' not in validated_data and price is not None:
+            validated_data['price'] = price
+
+        if 'base_price' not in validated_data and base_price is not None:
+            validated_data['base_price'] = base_price
+
+        if validated_data.get('price') is None:
+            validated_data['price'] = base_price
+            price = base_price
+
+        if validated_data.get('base_price') is None:
+            validated_data['base_price'] = price
+
+        if validated_data.get('price') is not None and validated_data['price'] <= Decimal('0'):
+            raise serializers.ValidationError({'price': 'Price must be a positive number.'})
+
+        if validated_data.get('base_price') is not None and validated_data['base_price'] <= Decimal('0'):
+            raise serializers.ValidationError({'base_price': 'Base price must be a positive number.'})
+
+        return validated_data
 
     def get_images(self, obj):
         request = self.context.get('request')
@@ -115,6 +147,7 @@ class VendorPriceSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context.get('request')
+        validated_data = self._normalize_price_fields(validated_data)
         vendor_price = super().create(validated_data)
         files = request.FILES.getlist('images') if request else []
         if files:
@@ -129,6 +162,7 @@ class VendorPriceSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         request = self.context.get('request')
+        validated_data = self._normalize_price_fields(validated_data, instance=instance)
         vendor_price = super().update(instance, validated_data)
         files = request.FILES.getlist('images') if request else []
         if files:

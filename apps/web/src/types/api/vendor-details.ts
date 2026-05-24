@@ -40,7 +40,10 @@ export interface VendorProductResponse {
   itemName: string;
   category: string;
   imageUrl: string | null;
+  description: string;
+  variant: string;
   price: number;
+  basePrice: number | null;
   unit: string;
   comparePrice: number | null;
   stockStatus: "InStock" | "LowStock" | "OutOfStock";

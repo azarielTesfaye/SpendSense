@@ -19,7 +19,10 @@ export interface VendorListing {
   item: number;
   item_name: string;
   unit: string;
+  description?: string;
+  variant?: string;
   price: number | string;
+  base_price?: number | string | null;
   stock_count: number;
   date: string;
   is_verified: boolean;
@@ -45,7 +48,10 @@ export interface Recommendation {
   rating_avg: number | string;
   rating_count: number;
   listing_id: number;
+  description?: string;
+  variant?: string;
   price: number | string;
+  base_price?: number | string | null;
   item_id: number;
   item_name: string;
   unit: string;
