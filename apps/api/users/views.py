@@ -1,4 +1,7 @@
 import logging
+from calendar import monthrange
+from datetime import date
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -15,6 +18,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from core_api.permissions import IsAdminRole
+from finance.models import Budget, Expense
+from finance.serializers import ExpenseSerializer
 
 from .models import AuditLog, Notification, User
 from .serializers import (
@@ -165,6 +170,132 @@ class MeView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+class UserDashboardView(APIView):
+    """GET /api/users/me/dashboard/ — dashboard summary built from live backend data."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        today = date.today()
+
+        budgets = list(
+            Budget.objects.filter(user=user).prefetch_related('categories').order_by('-year', '-month')
+        )
+        expenses = list(Expense.objects.filter(user=user).order_by('-date', '-id'))
+        notifications = list(user.notifications.order_by('-created_at'))
+
+        month_expenses = [
+            expense
+            for expense in expenses
+            if expense.date.year == today.year and expense.date.month == today.month
+        ]
+        days_in_month = monthrange(today.year, today.month)[1]
+        monthly_trend = []
+        expense_amount_by_day: dict[int, Decimal] = {}
+        for expense in month_expenses:
+            expense_amount_by_day[expense.date.day] = expense_amount_by_day.get(expense.date.day, Decimal('0')) + expense.amount
+        for day in range(1, days_in_month + 1):
+            monthly_trend.append(
+                {
+                    'day': day,
+                    'label': f'{day}',
+                    'amount': str(expense_amount_by_day.get(day, Decimal('0'))),
+                }
+            )
+        monthly_spent = sum((expense.amount for expense in month_expenses), Decimal('0'))
+        daily_average = monthly_spent / Decimal(max(1, today.day))
+
+        current_budget = next(
+            (
+                budget
+                for budget in budgets
+                if budget.year == today.year and budget.month == today.month
+            ),
+            budgets[0] if budgets else None,
+        )
+
+        category_spending = []
+        current_budget_payload = None
+        budget_limit = Decimal('0')
+        remaining_budget = Decimal('0')
+        percent_used = 0.0
+
+        if current_budget:
+            spent_by_category: dict[str, Decimal] = {}
+            for expense in month_expenses:
+                spent_by_category[expense.category] = spent_by_category.get(expense.category, Decimal('0')) + expense.amount
+
+            for category in current_budget.categories.all():
+                spent = spent_by_category.get(category.category_name, Decimal('0'))
+                remaining = category.limit_amount - spent
+                category_percent = float(round((spent / category.limit_amount * 100), 2)) if category.limit_amount > 0 else 0.0
+                category_spending.append(
+                    {
+                        'category_name': category.category_name,
+                        'limit_amount': str(category.limit_amount),
+                        'spent': str(spent),
+                        'remaining': str(remaining),
+                        'percent_used': category_percent,
+                        'warning_80': category_percent >= 80,
+                        'warning_100': category_percent >= 100,
+                    }
+                )
+
+            budget_limit = current_budget.total_limit
+            remaining_budget = budget_limit - monthly_spent
+            percent_used = float(round((monthly_spent / budget_limit * 100), 2)) if budget_limit > 0 else 0.0
+            current_budget_payload = {
+                'id': current_budget.id,
+                'month': current_budget.month,
+                'year': current_budget.year,
+                'total_limit': str(budget_limit),
+                'total_spent': str(monthly_spent),
+                'remaining': str(remaining_budget),
+                'percent_total_used': percent_used,
+                'warning_total_80': percent_used >= 80,
+                'warning_total_100': percent_used >= 100,
+                'by_category': category_spending,
+            }
+
+        overview = {
+            'monthly_spent': str(monthly_spent),
+            'budget_limit': str(budget_limit),
+            'remaining': str(remaining_budget),
+            'percent_used': percent_used,
+            'daily_average': str(daily_average),
+            'expense_count': len(expenses),
+            'budget_count': len(budgets),
+            'unread_notifications': sum(1 for notification in notifications if not notification.is_read),
+        }
+
+        recent_expenses = ExpenseSerializer(expenses[:5], many=True, context={'request': request}).data
+        recent_notifications = [
+            {
+                'id': notification.id,
+                'type': notification.type,
+                'message': notification.message,
+                'metadata': notification.metadata,
+                'is_read': notification.is_read,
+                'is_archived': notification.is_archived,
+                'created_at': notification.created_at,
+            }
+            for notification in notifications[:5]
+        ]
+
+        return Response(
+            {
+                'user': UserProfileSerializer(user, context={'request': request}).data,
+                'overview': overview,
+                'current_budget': current_budget_payload,
+                'category_spending': category_spending,
+                'monthly_trend': monthly_trend,
+                'recent_expenses': recent_expenses,
+                'notifications': recent_notifications,
+            }
+        )
 
 
 class UserPreferencesView(generics.RetrieveUpdateAPIView):
