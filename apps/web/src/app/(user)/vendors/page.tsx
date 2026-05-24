@@ -1,6 +1,9 @@
 import { VendorFilters } from "@/components/vendors/vendor-filters";
 import { VendorGrid } from "@/components/vendors/vendor-grid";
 import { getVendors } from "@/lib/vendors";
+import { Button } from "@repo/ui/components/button";
+import { Map } from "lucide-react";
+import Link from "next/link";
 
 export const metadata = {
   title: "Marketplace Vendors | SpendSense",
@@ -25,12 +28,20 @@ export default async function VendorsPage({
             Discover verified sellers offering the best value in your area.
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 rounded-full text-xs font-medium border border-green-200 dark:border-green-900/50">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-          </span>
-          LIVE FEED ACTIVE • Updated 2M AGO
+        <div className="flex items-center gap-3">
+          <Button asChild variant="outline" className="bg-card hover:bg-slate-50 dark:hover:bg-slate-900 gap-1.5 rounded-xl border font-semibold shadow-sm shrink-0">
+            <Link href="/vendors/map">
+              <Map className="w-4 h-4 text-blue-600 shrink-0" />
+              Map View
+            </Link>
+          </Button>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 rounded-full text-xs font-medium border border-green-200 dark:border-green-900/50">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            </span>
+            LIVE FEED ACTIVE • Updated 2M AGO
+          </div>
         </div>
       </section>
 

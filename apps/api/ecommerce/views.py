@@ -17,7 +17,7 @@ import logging
 from .pagination import StandardResultsSetPagination
 
 from core_api.permissions import IsAdminRole
-from market.models import VendorPrice
+from market.models import VendorPrice, Item
 from users.models import AuditLog, Notification, User, Vendor
 
 from django.db import transaction as db_transaction
@@ -91,7 +91,83 @@ class VendorListingListCreateView(generics.ListCreateAPIView):
         if getattr(self, 'swagger_fake_view', False):
             return VendorPrice.objects.none()
         v = self.get_vendor()
-        return VendorPrice.objects.filter(vendor=v).select_related('item', 'vendor').prefetch_related('images').order_by('-date', '-id')
+        qs = VendorPrice.objects.filter(vendor=v).select_related('item', 'vendor').prefetch_related('images')
+
+        # Apply query param filters (category, search q, price range, sort)
+        params = self.request.query_params
+        q = params.get('q')
+        category = params.get('category')
+        min_price = params.get('minPrice') or params.get('min_price')
+        max_price = params.get('maxPrice') or params.get('max_price')
+        sort_by = params.get('sortBy')
+
+        if q:
+            qs = qs.filter(
+                Q(item__name__icontains=q) | Q(item__description__icontains=q)
+            )
+
+        if category and category.lower() != 'all':
+            qs = qs.filter(item__category__iexact=category)
+
+        try:
+            if min_price is not None:
+                qs = qs.filter(price__gte=Decimal(min_price))
+        except Exception:
+            pass
+
+        try:
+            if max_price is not None:
+                qs = qs.filter(price__lte=Decimal(max_price))
+        except Exception:
+            pass
+
+        # Sorting
+        if sort_by == 'price':
+            qs = qs.order_by('price', '-date', '-id')
+        elif sort_by == 'newest':
+            qs = qs.order_by('-date', '-id')
+        else:
+            # default ordering (most recent)
+            qs = qs.order_by('-date', '-id')
+
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        """Return paginated listings plus a categories list.
+
+        Categories prefer vendor-specific item categories. If the vendor has
+        no categories, fall back to all categories in the Item table.
+        """
+        # Get the normal paginated response
+        response = super().list(request, *args, **kwargs)
+
+        # Compute vendor categories (unfiltered by query params)
+        try:
+            vendor = self.get_vendor()
+            vendor_cats_qs = VendorPrice.objects.filter(vendor=vendor).values_list('item__category', flat=True).distinct()
+            vendor_cats = [c for c in vendor_cats_qs if c]
+        except Exception:
+            vendor_cats = []
+
+        if not vendor_cats:
+            # Fallback to system-wide categories from Item model
+            try:
+                system_cats_qs = Item.objects.values_list('category', flat=True).distinct()
+                system_cats = [c for c in system_cats_qs if c]
+            except Exception:
+                system_cats = []
+            categories = sorted(set(system_cats))
+        else:
+            categories = sorted(set(vendor_cats))
+
+        # Attach categories to the response data
+        try:
+            if isinstance(response.data, dict):
+                response.data['categories'] = categories
+        except Exception:
+            pass
+
+        return response
 
     def perform_create(self, serializer):
         v = self.get_vendor()
@@ -191,6 +267,35 @@ class RecommendationsView(APIView):
             })
         out.sort(key=lambda x: (Decimal(x['price']), x['distance_km'] or 1e9))
         return Response(out[:limit])
+
+
+class VendorCategoriesView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, vendor_id):
+        # Return vendor-specific categories; fallback to system-wide categories
+        try:
+            vendor = get_object_or_404(Vendor, pk=vendor_id)
+        except Exception:
+            return Response({'categories': []})
+
+        try:
+            vendor_cats_qs = VendorPrice.objects.filter(vendor=vendor).values_list('item__category', flat=True).distinct()
+            vendor_cats = [c for c in vendor_cats_qs if c]
+        except Exception:
+            vendor_cats = []
+
+        if vendor_cats:
+            categories = sorted(set(vendor_cats))
+        else:
+            try:
+                system_cats_qs = Item.objects.values_list('category', flat=True).distinct()
+                system_cats = [c for c in system_cats_qs if c]
+            except Exception:
+                system_cats = []
+            categories = sorted(set(system_cats))
+
+        return Response({'categories': categories})
 
 
 class PurchaseListCreateView(generics.ListCreateAPIView):

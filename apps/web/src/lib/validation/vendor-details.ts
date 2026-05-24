@@ -77,14 +77,20 @@ export const vendorProductListSchema = z.object({
 }).transform((data) => {
   const products = data.results;
   const prices = products.map((p) => p.price);
+  // Prefer backend-provided categories if available; otherwise derive from results
+  const backendCats = (data as any).categories;
+  const categories = Array.isArray(backendCats) && backendCats.length
+    ? Array.from(new Set(backendCats.map((c: any) => String(c))))
+    : Array.from(new Set(products.map((p) => p.category)));
+
   return {
     products,
     pagination: data.pagination,
-    categories: Array.from(new Set(products.map((p) => p.category))),
-    priceRange: { 
-      min: prices.length ? Math.min(...prices) : 0, 
-      max: prices.length ? Math.max(...prices) : 0 
-    }
+    categories,
+    priceRange: {
+      min: prices.length ? Math.min(...prices) : 0,
+      max: prices.length ? Math.max(...prices) : 0,
+    },
   };
 });
 

@@ -1,4 +1,4 @@
-import { getVendorDetail, getVendorProducts, getVendorReviews, getVendorPriceTrend } from "@/lib/vendor-details";
+import { getVendorDetail, getVendorProducts, getVendorReviews, getVendorPriceTrend, getVendorCategories } from "@/lib/vendor-details";
 import { notFound } from "next/navigation";
 import { Star, MapPin, Phone, MessageCircle, Heart, CheckCircle, Package } from "lucide-react";
 import Image from "next/image";
@@ -17,6 +17,7 @@ import ShareVendorButton from "@/components/vendors/ShareVendorButton";
 import ReportVendorDialog from "@/components/vendors/ReportVendorDialog";
 import SimilarVendors from "@/components/vendors/SimilarVendors";
 import ProductGridFilters from "@/components/vendors/ProductGridFilters";
+import PaginationControls from "@/components/vendors/PaginationControls";
 
 // Skeleton imports
 import ProductGridSkeleton from "@/components/vendors/skeletons/ProductGridSkeleton";
@@ -323,14 +324,23 @@ async function ProductGrid({
   isAuthenticated: boolean;
 }) {
   try {
-    const vendorProducts = await getVendorProducts(vendorId, productParams);
+    const [vendorProducts, vendorCategories] = await Promise.all([
+      getVendorProducts(vendorId, productParams),
+      getVendorCategories(vendorId),
+    ]);
+
+    const categoriesToUse = Array.isArray(vendorCategories) && vendorCategories.length
+      ? vendorCategories
+      : vendorProducts.categories;
+
     return (
       <div className="space-y-6">
         {/* Category Tabs & Pagination Controls */}
-        <ProductGridFilters
-          categories={vendorProducts.categories}
-          pagination={vendorProducts.pagination}
-        />
+          <ProductGridFilters
+            categories={categoriesToUse}
+            pagination={vendorProducts.pagination}
+            hidePagination
+          />
 
         {vendorProducts.products.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 border border-dashed rounded-xl bg-card text-center">
@@ -351,8 +361,10 @@ async function ProductGrid({
                 city={vendorDetail.region}
               />
             ))}
-          </div>
-        )}
+            </div>
+          )}
+          {/* Pagination below product cards */}
+          <PaginationControls pagination={vendorProducts.pagination} />
       </div>
     );
   } catch (error) {

@@ -22,17 +22,19 @@ import {
 
 interface ProductGridFiltersProps {
   categories: string[];
-  pagination: {
+  pagination?: {
     total_records: number;
     total_pages: number;
     page_size: number;
     current_page: number;
   };
+  hidePagination?: boolean;
 }
 
 export default function ProductGridFilters({
   categories,
   pagination,
+  hidePagination = false,
 }: ProductGridFiltersProps) {
   const [category, setCategory] = useQueryState(
     "category",
@@ -48,7 +50,10 @@ export default function ProductGridFilters({
   );
 
   const allCategories = ["All", ...categories];
-  const { current_page, total_pages } = pagination;
+  const { current_page, total_pages } = pagination || {
+    current_page: 1,
+    total_pages: 1,
+  };
 
   const handleCategoryChange = (val: string) => {
     setCategory(val);
@@ -124,8 +129,8 @@ export default function ProductGridFilters({
         </TabsList>
       </Tabs>
 
-      {/* Pagination & Page Size controls */}
-      {total_pages > 1 && (
+      {/* Pagination & Page Size controls (optional) */}
+      {!hidePagination && total_pages > 1 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4">
           {/* Page size selector */}
           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
