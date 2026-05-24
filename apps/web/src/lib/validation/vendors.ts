@@ -24,6 +24,7 @@ export const vendorSchema = z.object({
   itemsListed: z.number().nonnegative(),
   priceRangeMin: z.number().nonnegative(),
   priceRangeMax: z.number().nonnegative(),
+  priceForSearchedItem: z.number().nullable().optional(),
   topItems: z.array(topItemSchema),
   imageUrl: z.string().nullable(),
   createdAt: z.string(),
@@ -45,7 +46,7 @@ export const vendorSearchParamsSchema = z.object({
   q: z.string().optional(),
   category: z.string().optional(),
   region: z.string().optional(),
-  sortBy: z.enum(["popularity", "price", "rating", "nearest"]).default("popularity").optional(),
+  sortBy: z.enum(["popularity", "price", "rating", "nearest", "value", "reliability"]).default("value").optional(),
   page: z.coerce.number().default(1).optional(),
   pageSize: z.coerce.number().default(12).optional(),
 });

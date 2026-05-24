@@ -22,6 +22,7 @@ export interface VendorResponse {
   itemsListed: number;
   priceRangeMin: number;
   priceRangeMax: number;
+  priceForSearchedItem?: number | null;
   topItems: TopItem[];
   imageUrl: string | null;
   createdAt: string;

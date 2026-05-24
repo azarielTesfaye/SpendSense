@@ -7,11 +7,53 @@ from users.vendor_serializers import VendorLocationSerializer
 
 class VendorListView(generics.ListAPIView):
     permission_classes = [AllowAny]
-    queryset = Vendor.objects.filter(is_verified=True).select_related('owner')
     serializer_class = MarketVendorListCardSerializer
     pagination_class = CustomMarketPagination
     search_fields = ('shop_name', 'city')
     filterset_fields = ('city', 'is_verified')
+
+    def get_queryset(self):
+        from django.db.models import Q, Min
+        qs = Vendor.objects.filter(is_verified=True).select_related('owner')
+        
+        region = self.request.query_params.get('region')
+        if region and region.lower() != 'all':
+            qs = qs.filter(city__iexact=region)
+            
+        category = self.request.query_params.get('category')
+        if category and category.lower() != 'all':
+            qs = qs.filter(vendorprice__item__category__icontains=category)
+            
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(
+                Q(shop_name__icontains=q) |
+                Q(vendorprice__item__name__icontains=q)
+            )
+
+        qs = qs.distinct()
+
+        sort_by = self.request.query_params.get('sortBy', 'value')
+        
+        if sort_by == 'price' and q:
+            qs = qs.annotate(searched_price=Min('vendorprice__price', filter=Q(vendorprice__item__name__icontains=q)))
+            qs = qs.order_by('searched_price')
+        elif sort_by == 'price':
+            qs = qs.annotate(min_price=Min('vendorprice__price'))
+            qs = qs.order_by('min_price')
+        elif sort_by == 'nearest':
+            qs = qs.order_by('-rating_avg')
+        elif sort_by == 'reliability':
+            qs = qs.order_by('-rating_avg', '-rating_count')
+        else:
+            qs = qs.order_by('-rating_avg')
+            
+        return qs
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['q'] = self.request.query_params.get('q')
+        return context
 
 class VendorLocationListView(generics.ListAPIView):
     permission_classes = [AllowAny]

@@ -1,4 +1,5 @@
 import { getVendors } from "@/lib/vendors";
+import { getMarketItems } from "@/lib/market";
 import { VendorMapClient } from "@/components/vendors/vendor-map-client";
 
 export const metadata = {
@@ -13,12 +14,13 @@ export default async function VendorMapPage({
 }) {
   const resolvedParams = await searchParams;
   
-  // Reuse the robust fetching logic with all filtering & search parameters active
-  const data = await getVendors({
-    ...resolvedParams,
-    // Maximize page size for comprehensive map discovery
-    pageSize: 100,
-  });
+  const [data, marketItems] = await Promise.all([
+    getVendors({
+      ...resolvedParams,
+      pageSize: 20,
+    }),
+    getMarketItems()
+  ]);
 
-  return <VendorMapClient initialData={data} searchParams={resolvedParams} />;
+  return <VendorMapClient initialData={data} searchParams={resolvedParams} marketItems={marketItems} />;
 }

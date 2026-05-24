@@ -30,15 +30,57 @@ import { Badge } from "@repo/ui/components/badge";
 import { Input } from "@repo/ui/components/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@repo/ui/components/select";
 import { VendorListResponse, VendorResponse } from "@/types/api/vendors";
+import { MarketItem } from "@/types/api/vendor";
 
 interface VendorMapClientProps {
   initialData: VendorListResponse;
   searchParams: { [key: string]: string | string[] | undefined };
+  marketItems?: MarketItem[];
 }
 
-export function VendorMapClient({ initialData }: VendorMapClientProps) {
+export function VendorMapClient({ initialData, searchParams, marketItems = [] }: VendorMapClientProps) {
   const [activeTab, setActiveTab] = useState<"map" | "list">("map");
   const [selectedVendor, setSelectedVendor] = useState<VendorResponse | null>(null);
+  
+  const [vendors, setVendors] = useState<VendorResponse[]>(initialData.results);
+  const [page, setPage] = useState(initialData.pagination.current_page);
+  const [hasMore, setHasMore] = useState(initialData.pagination.current_page < initialData.pagination.total_pages);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  useEffect(() => {
+    setVendors(initialData.results);
+    setPage(initialData.pagination.current_page);
+    setHasMore(initialData.pagination.current_page < initialData.pagination.total_pages);
+  }, [initialData]);
+
+  const loadMore = async () => {
+    if (isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set("page", nextPage.toString());
+      currentUrl.searchParams.set("pageSize", "20");
+      
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+      const res = await fetch(`${API_BASE}/api/market/vendors/${currentUrl.search}`);
+      const data = await res.json() as VendorListResponse;
+      setVendors(prev => [...prev, ...data.results]);
+      setPage(data.pagination.current_page);
+      setHasMore(data.pagination.current_page < data.pagination.total_pages);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const bottom = e.currentTarget.scrollHeight - e.currentTarget.scrollTop <= e.currentTarget.clientHeight + 200;
+    if (bottom && hasMore && !isLoadingMore) {
+      loadMore();
+    }
+  };
   
   // Geolocation states
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -173,7 +215,7 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
     import("leaflet").then((L) => {
       const bounds = L.latLngBounds([]);
 
-      initialData.results.forEach((vendor) => {
+      vendors.forEach((vendor) => {
         if (!vendor.latitude || !vendor.longitude) return;
 
         const position: [number, number] = [vendor.latitude, vendor.longitude];
@@ -190,6 +232,9 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
             ? "#2563eb" // Royal blue for good/average deals
             : "#6b7280"; // Muted gray
 
+        const pinText = vendor.priceForSearchedItem ? `${vendor.priceForSearchedItem}<br/>ETB` : `${score}/10`;
+        const pinTextSize = vendor.priceForSearchedItem ? "text-[8px]" : "text-[10px]";
+
         const iconHtml = `<div class="relative flex items-center justify-center" style="
           width: 42px; height: 42px;
           background: ${pinColor};
@@ -199,8 +244,8 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
           box-shadow: 0 4px 12px rgba(0,0,0,0.3);
           transition: all 0.2s ease-in-out;
         ">
-          <div style="transform: rotate(45deg); color: white;" class="font-extrabold text-[10px]">
-            ${score}/10
+          <div style="transform: rotate(45deg); color: white;" class="font-extrabold ${pinTextSize} text-center leading-tight">
+            ${pinText}
           </div>
           ${isVerified ? `
             <span class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 border-2 border-white shadow-sm" style="transform: rotate(45deg)">
@@ -232,7 +277,10 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
             <p class="text-xs text-slate-500 m-0">${vendor.location}</p>
             <div class="flex items-center justify-between pt-1 border-t border-slate-100">
               <span class="text-xs font-semibold text-slate-600">Rating: ⭐ ${vendor.rating.toFixed(1)}</span>
-              <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Score: ${vendor.competitivenessScore}/10</span>
+              ${vendor.priceForSearchedItem 
+                ? `<span class="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">Price: ${vendor.priceForSearchedItem} ETB</span>`
+                : `<span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Score: ${vendor.competitivenessScore}/10</span>`
+              }
             </div>
           </div>
         `;
@@ -247,11 +295,11 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
       });
 
       // Fit map to view all pins seamlessly
-      if (initialData.results.length > 0 && bounds.isValid()) {
+      if (vendors.length > 0 && bounds.isValid()) {
         map.fitBounds(bounds, { padding: [50, 50] });
       }
     });
-  }, [initialData]);
+  }, [vendors]);
 
   // Center maps dynamically to selected vendor in side panel list
   const handleSelectVendor = (vendor: VendorResponse) => {
@@ -298,18 +346,26 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
 
         {/* Dynamic Filter Controls */}
         <div className="flex flex-wrap items-center gap-2 max-w-full md:max-w-xl">
-          <Input
-            placeholder="Search shops..."
-            value={q || ""}
-            onChange={(e) => startTransition(() => { setQ(e.target.value || null); })}
-            className="h-8 w-44 text-xs"
-          />
+          <Select
+            value={q || "all"}
+            onValueChange={(val) => startTransition(() => { setQ(val === "all" ? null : val); })}
+          >
+            <SelectTrigger className="h-8 w-44 text-xs">
+              <SelectValue placeholder="Search item..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Items</SelectItem>
+              {marketItems.map((item) => (
+                <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <Select
             value={category || "all"}
             onValueChange={(val) => startTransition(() => { setCategory(val === "all" ? null : val); })}
           >
-            <SelectTrigger className="h-8 w-32 text-xs">
+            <SelectTrigger className="h-8 w-28 text-xs">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
@@ -324,7 +380,7 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
             value={region || "all"}
             onValueChange={(val) => startTransition(() => { setRegion(val === "all" ? null : val); })}
           >
-            <SelectTrigger className="h-8 w-32 text-xs">
+            <SelectTrigger className="h-8 w-28 text-xs">
               <SelectValue placeholder="Region" />
             </SelectTrigger>
             <SelectContent>
@@ -332,6 +388,21 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
               {regions.map((r) => (
                 <SelectItem key={r} value={r}>{r}</SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={sortBy || "value"}
+            onValueChange={(val) => startTransition(() => { setSortBy(val); })}
+          >
+            <SelectTrigger className="h-8 w-32 text-xs">
+              <SelectValue placeholder="Sort By" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="value">Best Value</SelectItem>
+              <SelectItem value="price">Price: Low to High</SelectItem>
+              <SelectItem value="nearest">Nearest</SelectItem>
+              <SelectItem value="reliability">Reliability</SelectItem>
             </SelectContent>
           </Select>
 
@@ -374,7 +445,7 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
             }`}
           >
             <List className="w-3.5 h-3.5" />
-            List ({initialData.results.length})
+            List ({vendors.length})
           </button>
         </div>
       </header>
@@ -467,14 +538,14 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
             </div>
           ) : (
             <div className="px-5 py-4 border-b bg-card shrink-0 shadow-sm flex items-center justify-between text-xs text-muted-foreground font-semibold">
-              <span>Matching Sellers ({initialData.results.length})</span>
-              <span>Sorted by Value Score</span>
+              <span>Matching Sellers ({vendors.length})</span>
+              <span>Sorted by {sortBy === "price" ? "Price" : sortBy === "nearest" ? "Distance" : sortBy === "reliability" ? "Reliability" : "Value Score"}</span>
             </div>
           )}
 
           {/* Scrolling List Panel */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {initialData.results.length === 0 ? (
+          <div className="flex-1 overflow-y-auto p-4 space-y-3" onScroll={handleScroll}>
+            {vendors.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
                 <Package className="w-10 h-10 text-muted-foreground opacity-50" />
                 <div>
@@ -485,7 +556,7 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
                 </div>
               </div>
             ) : (
-              initialData.results.map((vendor) => {
+              vendors.map((vendor) => {
                 const isSelected = selectedVendor?.id === vendor.id;
                 const score = vendor.competitivenessScore;
 
@@ -537,20 +608,27 @@ export function VendorMapClient({ initialData }: VendorMapClientProps) {
                         <Badge
                           variant="secondary"
                           className={`text-[10px] px-2 py-0.5 rounded border-none font-bold ${
-                            score >= 8
+                            vendor.priceForSearchedItem
+                              ? "bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
+                              : score >= 8
                               ? "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"
                               : score >= 5
                               ? "bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
                               : "bg-slate-100 text-slate-700"
                           }`}
                         >
-                          Score: {score}/10
+                          {vendor.priceForSearchedItem ? `Price: ${vendor.priceForSearchedItem} ETB` : `Score: ${score}/10`}
                         </Badge>
                       </div>
                     </div>
                   </div>
                 );
               })
+            )}
+            {isLoadingMore && (
+              <div className="flex justify-center p-4">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
             )}
           </div>
         </div>
