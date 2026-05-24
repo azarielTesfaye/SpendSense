@@ -1,15 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import { ShieldCheck, FileText, Hash, Loader2 } from "lucide-react";
+import { useState, lazy, Suspense } from "react";
+import { ShieldCheck, FileText, Hash, Loader2, MapPin, Clock } from "lucide-react";
 import { requestVerification } from "@/actions/vendor/requestVerification";
 import { toast } from "sonner";
 import Link from "next/link";
+import { BusinessHoursEditor, type BusinessHourEntry } from "@/components/shared/business-hours-editor";
+
+const LocationPicker = lazy(() => import("@/components/shared/location-picker"));
+
+const CITY_OPTIONS = ["Addis Ababa", "Adama"] as const;
 
 export function VerificationForm() {
   const [isPending, setIsPending] = useState(false);
+  const [city, setCity] = useState("");
+  const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>([]);
+  const [latitude, setLatitude] = useState<number | undefined>();
+  const [longitude, setLongitude] = useState<number | undefined>();
 
   async function handleSubmit(formData: FormData) {
+    // Append new fields to the FormData
+    if (city) formData.append("city", city);
+    if (latitude != null) formData.append("latitude", String(latitude));
+    if (longitude != null) formData.append("longitude", String(longitude));
+    if (businessHours.length > 0) {
+      formData.append("business_hours", JSON.stringify(businessHours));
+    }
+
     setIsPending(true);
     try {
       const result = await requestVerification(formData);
@@ -34,10 +51,11 @@ export function VerificationForm() {
       </div>
       <h1 className="text-3xl font-bold text-slate-900 mb-4">Verify Your Business</h1>
       <p className="text-slate-500 mb-8 text-lg leading-relaxed">
-        Please provide your business documentation to complete the verification process and start selling.
+        Please provide your business documentation and details to complete the verification process and start selling.
       </p>
 
       <form action={handleSubmit} className="text-left space-y-6">
+        {/* TIN Number */}
         <div className="space-y-2">
           <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
             <Hash size={16} className="text-[#135bec]" />
@@ -52,6 +70,7 @@ export function VerificationForm() {
           />
         </div>
 
+        {/* Business License */}
         <div className="space-y-2">
           <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
             <FileText size={16} className="text-[#135bec]" />
@@ -70,6 +89,66 @@ export function VerificationForm() {
           <p className="text-[10px] text-slate-400">Accepted formats: PDF, PNG, JPG (Max 5MB)</p>
         </div>
 
+        {/* City Select */}
+        <div className="space-y-2">
+          <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+            <MapPin size={16} className="text-[#135bec]" />
+            City
+          </label>
+          <select
+            required
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 outline-none focus:border-[#135bec] focus:bg-white transition-all disabled:opacity-50"
+            disabled={isPending}
+          >
+            <option value="">Select your city</option>
+            {CITY_OPTIONS.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Business Hours */}
+        <div className="space-y-3">
+          <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+            <Clock size={16} className="text-[#135bec]" />
+            Business Hours
+          </label>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <BusinessHoursEditor value={businessHours} onChange={setBusinessHours} />
+          </div>
+        </div>
+
+        {/* Location Picker */}
+        <div className="space-y-3">
+          <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+            <MapPin size={16} className="text-[#135bec]" />
+            Business Location
+          </label>
+          <p className="text-xs text-slate-400">
+            Click on the map, drag the marker, or use your device&apos;s GPS to set your shop location.
+            You can also type coordinates manually.
+          </p>
+          <Suspense
+            fallback={
+              <div className="h-[280px] rounded-xl bg-slate-100 flex items-center justify-center text-sm text-slate-400 animate-pulse">
+                Loading map...
+              </div>
+            }
+          >
+            <LocationPicker
+              latitude={latitude}
+              longitude={longitude}
+              onChange={(lat, lng) => {
+                setLatitude(lat);
+                setLongitude(lng);
+              }}
+            />
+          </Suspense>
+        </div>
+
+        {/* Submit */}
         <div className="pt-4 flex flex-col sm:flex-row gap-4 justify-center">
           <Link
             href="/vendor/profile"

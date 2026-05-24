@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@repo/ui/components/button";
 import { Check, Plus, Loader2 } from "lucide-react";
-import { addToShoppingList } from "@/actions/shopping-list";
+import { addToCart } from "@/actions/ecommerce";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import PriceAlertDialog from "./PriceAlertDialog";
@@ -44,12 +44,27 @@ export default function ProductCard({
     }
 
     startTransition(async () => {
-      const res = await addToShoppingList(product.itemId, 1, product.unit);
-      if (res.success) {
+      try {
+        await addToCart({
+          listing_id: Number(product.id),
+          vendor_id: product.vendorId ?? vendorDetail.id,
+          vendor_name: product.vendorName ?? vendorDetail.shopName,
+          item_name: product.itemName,
+          unit_price: Number(product.price),
+          unit: product.unit,
+          quantity: 1,
+        });
+
         setInList(true);
-        toast.success(`${product.itemName} added to your shopping list!`);
-      } else {
-        toast.error(res.message);
+        toast.success(`${product.itemName} added to your cart!`, {
+          action: {
+            label: "View Cart",
+            onClick: () => router.push("/cart"),
+          },
+        });
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to add to cart");
       }
     });
   };

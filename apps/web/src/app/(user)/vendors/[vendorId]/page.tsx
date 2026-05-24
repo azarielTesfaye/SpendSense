@@ -221,7 +221,13 @@ export default async function VendorDetailsPage({ params, searchParams }: PagePr
             <div className="space-y-3 pt-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Business Hours</span>
-                <span className="font-medium">{vendorDetail.businessHours}</span>
+                <span className="font-medium">
+                  {typeof vendorDetail.businessHours === "string"
+                    ? vendorDetail.businessHours
+                    : Array.isArray(vendorDetail.businessHours)
+                    ? vendorDetail.businessHours.map((h) => `${h.day}: ${h.start}-${h.end}`).join(", ")
+                    : "Not specified"}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Delivery</span>
@@ -270,6 +276,7 @@ export default async function VendorDetailsPage({ params, searchParams }: PagePr
             region={vendorDetail.region}
             lat={vendorDetail.latitude}
             lng={vendorDetail.longitude}
+            businessHours={vendorDetail.businessHours}
           />
         </div>
       </div>

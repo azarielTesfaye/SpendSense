@@ -16,6 +16,7 @@ export interface VendorProfileResponse {
   rating_count: number;
   latitude: number | null;
   longitude: number | null;
+  business_hours?: { day: string; start: string; end: string }[] | null;
   image: string | null;
   image_url: string | null;
   theme_image: string | null;

@@ -21,7 +21,14 @@ export const vendorDetailSchema = z.object({
   imageUrl: z.string().nullable(),
   createdAt: z.string(),
   description: z.string(),
-  businessHours: z.string(),
+  businessHours: z.union([
+    z.string(),
+    z.array(z.object({
+      day: z.string(),
+      start: z.string(),
+      end: z.string(),
+    }))
+  ]).nullable().optional().default(""),
   deliveryAvailable: z.boolean(),
   deliveryEstimate: z.string().nullable(),
   paymentMethods: z.array(z.string()),
