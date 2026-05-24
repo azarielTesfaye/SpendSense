@@ -43,7 +43,10 @@ export const priceHistorySchema = z.object({
     date: z.string(),
     price: z.coerce.number(),
     isForecast: z.boolean(),
+    isLastHistorical: z.boolean().optional(),
     confidenceInterval: z.tuple([z.coerce.number(), z.coerce.number()]).optional(),
+    confidenceLow: z.coerce.number().optional(),
+    confidenceHigh: z.coerce.number().optional(),
   })),
   nationalAverageDataPoints: z.array(z.object({
     date: z.string(),

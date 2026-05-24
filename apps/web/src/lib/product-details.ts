@@ -94,10 +94,20 @@ export async function getProductDetail(itemId: string): Promise<ProductDetailRes
   }
 
   // ItemSerializer returns a relative image path; build a full URL
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-  const imageUrls = item.image
-    ? [item.image.startsWith('http') ? item.image : `${API_BASE}/media/${item.image}`]
-    : [];
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  let realImageUrl = item.image_url || item.image || "";
+  if (realImageUrl && !realImageUrl.startsWith('http')) {
+    if (realImageUrl.startsWith('/media/')) {
+      realImageUrl = `${API_BASE}${realImageUrl}`;
+    } else if (realImageUrl.startsWith('media/')) {
+      realImageUrl = `${API_BASE}/${realImageUrl}`;
+    } else if (realImageUrl.startsWith('/')) {
+      realImageUrl = `${API_BASE}${realImageUrl}`;
+    } else {
+      realImageUrl = `${API_BASE}/media/${realImageUrl}`;
+    }
+  }
+  const imageUrls = realImageUrl ? [realImageUrl] : [];
 
   const composed: ProductDetailResponse = {
     id: String(item.id),
@@ -128,25 +138,67 @@ export async function getPriceHistory(
   const range = timeRange || '6M';
   const { from_date, to_date } = getDateRange(range);
 
-  const raw = await apiClient<PriceTrendPoint[]>({
-    method: 'GET',
-    endpoint: '/api/market/trends',
-    query: { item_id: itemId, from_date, to_date },
-    next: { tags: [`product:${itemId}:history`], revalidate: 60 },
-  });
+  const [rawTrends, rawForecasts] = await Promise.all([
+    apiClient<PriceTrendPoint[]>({
+      method: 'GET',
+      endpoint: '/api/market/trends',
+      query: { item_id: itemId, from_date, to_date },
+      next: { tags: [`product:${itemId}:history`], revalidate: 60 },
+    }),
+    apiClient<any[]>({
+      method: 'GET',
+      endpoint: '/api/market/forecasts',
+      query: { item_id: itemId },
+      next: { tags: [`product:${itemId}:forecast`], revalidate: 60 },
+    }).catch(() => [] as any[]),
+  ]);
 
-  const trendPoints = z.array(priceTrendPointSchema).catch([]).parse(raw);
+  const trendPoints = z.array(priceTrendPointSchema).catch([]).parse(rawTrends);
 
   const dataPoints = trendPoints.map(p => ({
     date: p.date,
     price: parseFloat(p.average_price),
-    isForecast: false as const,
+    isForecast: false,
+    isLastHistorical: false,
+    confidenceInterval: undefined as [number, number] | undefined,
+    confidenceLow: undefined as number | undefined,
+    confidenceHigh: undefined as number | undefined,
   }));
+
+  // Connect forecast line to historical line continuously
+  if (dataPoints.length > 0) {
+    dataPoints[dataPoints.length - 1].isLastHistorical = true;
+    
+    // Set confidence low/high on the last historical point equal to its price to start the band cleanly
+    dataPoints[dataPoints.length - 1].confidenceLow = dataPoints[dataPoints.length - 1].price;
+    dataPoints[dataPoints.length - 1].confidenceHigh = dataPoints[dataPoints.length - 1].price;
+    dataPoints[dataPoints.length - 1].confidenceInterval = [
+      dataPoints[dataPoints.length - 1].price,
+      dataPoints[dataPoints.length - 1].price
+    ] as [number, number];
+  }
+
+  const forecastPoints = rawForecasts.map((f: any) => {
+    const price = parseFloat(f.predicted_price);
+    const low = f.confidence_low ? parseFloat(f.confidence_low) : price;
+    const high = f.confidence_high ? parseFloat(f.confidence_high) : price;
+    return {
+      date: f.forecast_date,
+      price,
+      isForecast: true,
+      isLastHistorical: false,
+      confidenceInterval: [low, high] as [number, number],
+      confidenceLow: low,
+      confidenceHigh: high,
+    };
+  });
+
+  const combinedPoints = [...dataPoints, ...forecastPoints];
 
   const composed: PriceHistoryResponse = {
     itemId,
     timeRange: range,
-    dataPoints,
+    dataPoints: combinedPoints,
     nationalAverageDataPoints: dataPoints.map(d => ({ date: d.date, price: d.price })),
   };
 

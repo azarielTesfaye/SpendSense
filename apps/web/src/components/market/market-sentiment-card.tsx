@@ -13,7 +13,7 @@ export function MarketSentimentCard({ sentiment, predictionText, inflationRate, 
   return (
     <div className="bg-[#135bec] rounded-3xl p-6 text-white shadow-xl shadow-blue-500/20 flex flex-col h-full">
       <p className="text-blue-200 text-xs font-bold uppercase tracking-widest mb-1">Market Sentiment</p>
-      <h3 className="text-2xl font-black mb-4">{sentiment}</h3>
+      <h3 className="text-xl font-black mb-4">{sentiment}</h3>
       
       <p className="text-blue-100 text-sm leading-relaxed mb-8 flex-1">
         {predictionText}

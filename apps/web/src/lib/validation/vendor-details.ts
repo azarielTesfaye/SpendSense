@@ -117,6 +117,19 @@ export const vendorReviewListSchema = z.object({
   averageRating: z.number(),
   totalReviews: z.number(),
   distribution: z.record(z.string(), z.number()),
+  eligibility: z.enum(["eligible", "ineligible", "already_reviewed"]).optional().nullable(),
+  verifiedPurchaseDetails: z.object({
+    itemName: z.string(),
+    date: z.string(),
+  }).optional().nullable(),
+  userReview: z.object({
+    id: z.string(),
+    rating: z.number(),
+    comment: z.string(),
+    createdAt: z.string(),
+    canEdit: z.boolean(),
+    expiresInSeconds: z.number(),
+  }).optional().nullable(),
 });
 
 export const productSearchParamsSchema = z.object({

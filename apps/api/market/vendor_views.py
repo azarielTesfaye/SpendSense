@@ -151,51 +151,121 @@ class VendorReviewListView(views.APIView):
     permission_classes = [AllowAny]
     
     def get(self, request, pk):
-        # check if page given
+        from ecommerce.models import VendorReview, Transaction
+        from django.utils import timezone
+        
+        vendor_id = pk
         page = int(request.query_params.get('page', 1))
         
-        reviews = []
-        if page == 1:
-            reviews = [
-                {
-                    'id': str(uuid.uuid4()),
-                    'userName': 'Abebe Kebede',
-                    'userInitial': 'A',
-                    'rating': 5,
-                    'comment': 'Excellent service, delivery was exactly on time.',
-                    'date': timezone.now().isoformat(),
-                    'helpfulCount': 12,
-                    'verifiedPurchase': True
-                },
-                {
-                    'id': str(uuid.uuid4()),
-                    'userName': 'Hana T.',
-                    'userInitial': 'H',
-                    'rating': 4,
-                    'comment': 'Good prices, but took a while to find the shop.',
-                    'date': (timezone.now() - timezone.timedelta(days=2)).isoformat(),
-                    'helpfulCount': 3,
-                    'verifiedPurchase': True
+        # Check eligibility silently for request.user
+        eligibility = 'ineligible'
+        verified_purchase_details = None
+        user_review_details = None
+        
+        user = request.user
+        if user and user.is_authenticated:
+            # Already reviewed?
+            user_review = VendorReview.objects.filter(vendor_id=vendor_id, user=user).first()
+            if user_review:
+                eligibility = 'already_reviewed'
+                # Check 24 hour edit grace window
+                can_edit = (timezone.now() - user_review.created_at).total_seconds() < 86400
+                expires_in = max(0, int(86400 - (timezone.now() - user_review.created_at).total_seconds()))
+                user_review_details = {
+                    'id': str(user_review.id),
+                    'rating': user_review.rating,
+                    'comment': user_review.comment,
+                    'createdAt': user_review.created_at.isoformat(),
+                    'canEdit': can_edit,
+                    'expiresInSeconds': expires_in
                 }
-            ]
+            else:
+                # Check for a completed purchase
+                completed_purchase = Transaction.objects.filter(
+                    user=user,
+                    vendor_id=vendor_id,
+                    status__in=['paid', 'shipped', 'delivered']
+                ).select_related('vendor_price__item').first()
+                
+                if completed_purchase:
+                    eligibility = 'eligible'
+                    item_name = completed_purchase.vendor_price.item.name if completed_purchase.vendor_price and completed_purchase.vendor_price.item else "Verified Item"
+                    date_str = (completed_purchase.paid_at or completed_purchase.created_at).strftime('%B %d, %Y')
+                    verified_purchase_details = {
+                        'itemName': item_name,
+                        'date': date_str
+                    }
+        
+        # Fetch all reviews for this vendor
+        reviews_qs = VendorReview.objects.filter(vendor_id=vendor_id).select_related('user')
+        total_reviews = reviews_qs.count()
+        
+        # Calculate distribution counts
+        from django.db.models import Count
+        dist_counts = reviews_qs.values('rating').annotate(c=Count('id'))
+        distribution = {str(i): 0 for i in range(1, 6)}
+        for item in dist_counts:
+            r = str(item['rating'])
+            if r in distribution:
+                distribution[r] = item['c']
+                
+        # Average rating
+        avg_rating = 0.0
+        if total_reviews > 0:
+            avg_rating = sum(r.rating for r in reviews_qs.all()) / total_reviews
+            avg_rating = round(avg_rating, 1)
+        else:
+            try:
+                vendor = Vendor.objects.filter(pk=vendor_id).first()
+                avg_rating = float(vendor.rating_avg) if vendor else 0.0
+            except Exception:
+                avg_rating = 0.0
+        
+        # Paginate results
+        page_size = 10
+        total_pages = max(1, (total_reviews + page_size - 1) // page_size)
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        paginated_qs = reviews_qs.order_by('-created_at')[start:end]
+        
+        reviews_list = []
+        for r in paginated_qs:
+            # Check if this specific review has a completed transaction
+            has_purchase = Transaction.objects.filter(
+                user=r.user,
+                vendor_id=vendor_id,
+                status__in=['paid', 'shipped', 'delivered']
+            ).exists()
+            
+            full_name = r.user.full_name or r.user.email
+            initial = full_name[0].upper() if full_name else 'U'
+            
+            reviews_list.append({
+                'id': str(r.id),
+                'userName': full_name,
+                'userInitial': initial,
+                'rating': r.rating,
+                'comment': r.comment,
+                'date': r.created_at.isoformat(),
+                'helpfulCount': 0,
+                'verifiedPurchase': has_purchase
+            })
             
         return Response({
             'pagination': {
-                'total_records': 2,
-                'total_pages': 1,
-                'page_size': 10,
+                'total_records': total_reviews,
+                'total_pages': total_pages,
+                'page_size': page_size,
                 'current_page': page
             },
-            'reviews': reviews,
-            'averageRating': 4.5,
-            'totalReviews': 145,
-            'distribution': {
-                '1': 2,
-                '2': 5,
-                '3': 15,
-                '4': 43,
-                '5': 80
-            }
+            'reviews': reviews_list,
+            'averageRating': avg_rating,
+            'totalReviews': total_reviews,
+            'distribution': distribution,
+            'eligibility': eligibility,
+            'verifiedPurchaseDetails': verified_purchase_details,
+            'userReview': user_review_details
         })
 
 

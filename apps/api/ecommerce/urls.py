@@ -6,6 +6,7 @@ app_name = 'ecommerce'
 
 urlpatterns = [
     path('vendors/<uuid:vendor_id>/reviews/', views.VendorReviewListCreateView.as_view(), name='vendor-reviews'),
+    path('reviews/<int:pk>/', views.VendorReviewDetailView.as_view(), name='review-detail'),
     path('vendors/<uuid:vendor_id>/listings/', views.VendorListingListCreateView.as_view(), name='vendor-listings'),
     path('vendors/<uuid:vendor_id>/categories/', views.VendorCategoriesView.as_view(), name='vendor-categories'),
     path('vendors/<uuid:pk>/', views.VendorDetailView.as_view(), name='vendor-detail'),

@@ -345,7 +345,7 @@ export function VendorMapClient({ initialData, searchParams, marketItems = [] }:
         </div>
 
         {/* Dynamic Filter Controls */}
-        <div className="flex flex-wrap items-center gap-2 max-w-full md:max-w-xl">
+        <div className="flex flex-wrap items-center gap-2 max-w-full ">
           <Select
             value={q || "all"}
             onValueChange={(val) => startTransition(() => { setQ(val === "all" ? null : val); })}

@@ -923,7 +923,87 @@ class VendorReviewListCreateView(generics.ListCreateAPIView):
         return ctx
 
     def perform_create(self, serializer):
-        serializer.save()
+        # Save the review
+        review = serializer.save()
+
+        # Recalculate average rating and count for the vendor
+        try:
+            vendor = review.vendor
+            agg = VendorReview.objects.filter(vendor=vendor).aggregate(avg=Avg('rating'))
+            count = VendorReview.objects.filter(vendor=vendor).count()
+            Vendor.objects.filter(pk=vendor.pk).update(
+                rating_avg=Decimal(str(round(float(agg['avg'] or 0), 2))),
+                rating_count=count,
+            )
+        except Exception:
+            pass
+
+        # Optional: notify Next.js to revalidate cached pages/tags if configured.
+        # Configure `NEXT_REVALIDATE_URL` and optional `NEXT_REVALIDATE_SECRET` in Django settings.
+        try:
+            revalidate_url = getattr(settings, 'NEXT_REVALIDATE_URL', None)
+            revalidate_secret = getattr(settings, 'NEXT_REVALIDATE_SECRET', None)
+            if revalidate_url:
+                payload = {
+                    'vendor_id': str(review.vendor_id),
+                    'tags': [f"vendor:{review.vendor_id}", f"vendor:{review.vendor_id}:reviews"],
+                    'paths': [f"/vendors/{review.vendor_id}"]
+                }
+                if revalidate_secret:
+                    payload['secret'] = revalidate_secret
+
+                try:
+                    import json
+                    from urllib.request import Request, urlopen
+                    req = Request(revalidate_url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
+                    # fire-and-forget; do not block on the response
+                    urlopen(req, timeout=2)
+                except Exception:
+                    # Swallow network errors — revalidation is best-effort
+                    pass
+        except Exception:
+            pass
+
+
+class VendorReviewDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = VendorReviewSerializer
+    queryset = VendorReview.objects.all()
+
+    def get_queryset(self):
+        # Restrict to the owner
+        return VendorReview.objects.filter(user=self.request.user)
+
+    def perform_update(self, serializer):
+        review = self.get_object()
+        if (timezone.now() - review.created_at).total_seconds() > 86400:
+            raise serializers.ValidationError("Reviews can only be edited within 24 hours of creation.")
+            
+        updated_review = serializer.save()
+        
+        # Recalculate average rating for the vendor
+        vendor = updated_review.vendor
+        agg = VendorReview.objects.filter(vendor=vendor).aggregate(avg=Avg('rating'))
+        count = VendorReview.objects.filter(vendor=vendor).count()
+        Vendor.objects.filter(pk=vendor.pk).update(
+            rating_avg=Decimal(str(round(float(agg['avg'] or 0), 2))),
+            rating_count=count,
+        )
+
+    def perform_destroy(self, instance):
+        if (timezone.now() - instance.created_at).total_seconds() > 86400:
+            raise serializers.ValidationError("Reviews can only be deleted within 24 hours of creation.")
+            
+        vendor = instance.vendor
+        instance.delete()
+        
+        # Recalculate average rating for the vendor
+        agg = VendorReview.objects.filter(vendor=vendor).aggregate(avg=Avg('rating'))
+        count = VendorReview.objects.filter(vendor=vendor).count()
+        Vendor.objects.filter(pk=vendor.pk).update(
+            rating_avg=Decimal(str(round(float(agg['avg'] or 0), 2))),
+            rating_count=count,
+        )
 
 
 class AdminVendorListView(generics.ListAPIView):
